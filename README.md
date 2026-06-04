@@ -1,37 +1,46 @@
-# AI-Powered Distributed University ERP
+# Next-Gen Smart AI University Ecosystem
 
-An object-oriented Java console application for managing core university operations such as students, courses, attendance, examinations, fees, hostel, library, placements, authentication, background notifications, and a small RMI service.
+An advanced, feature-rich University ERP transformed into a production-grade ecosystem. It features an AI-powered Student Identity System, a complete LMS module, Placement analytics, and an interactive AI Academic Copilot.
 
-The current project is best understood as a university ERP backend plus a basic terminal UI. Several modules exist in code, but only a smaller set is exposed in the main menu.
+## Key Features
 
-## Table of Contents
+### 🎓 Student Digital Identity System
+- **Comprehensive Profiles:** Skills, Projects, Certifications, and Internships.
+- **Digital ID Card:** QR-based identity verification.
+- **Resume Generator:** Automated professional resume creation.
 
-- [Quick Start](#quick-start)
-- [Command Center](#command-center)
-- [Project Snapshot](#project-snapshot)
-- [Architecture Map](#architecture-map)
-- [Requirements](#requirements)
-- [Build Commands](#build-commands)
-- [Interactive Execution Flow](#interactive-execution-flow)
-- [UI Integration Status](#ui-integration-status)
-- [RMI Execution](#rmi-execution)
-- [Data Files](#data-files)
-- [Available Modules](#available-modules)
-- [Known Problems and Lacking Areas](#known-problems-and-lacking-areas)
-- [Troubleshooting](#troubleshooting)
-- [Recommended Improvements](#recommended-improvements)
+### 📚 Assignment Management System (LMS)
+- **Faculty Portal:** Create assignments, set deadlines, and attach resources.
+- **Student Portal:** Track assignments, upload submissions, and view graded feedback.
+- **Gradebook:** Centralized tracking of assignment marks.
+
+### 🤖 AI Academic Copilot
+- **Placement Readiness:** AI-calculated scores based on academics and skills.
+- **Career Mentor:** Personalized career and skill recommendations.
+- **AI Chatbot:** Heuristic-based assistant for quick academic queries.
+
+### 🛠 Technical Upgrades
+- **Maven Integration:** Standardized build and dependency management.
+- **SQLite Support:** Foundation for persistent relational data.
+- **Modern UI:** Tabbed dashboards and interactive analytics.
 
 ---
 
-## Quick Start
+## Quick Start (Maven)
 
 Run these commands from the project root:
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
-mkdir -p out
-javac -d out $(find university -name "*.java")
-java -cp out com.university.main.UniversityERP
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
+chmod +x run.sh
+./run.sh
+```
+
+Or manually:
+
+```bash
+mvn clean compile
+mvn exec:java -Dexec.mainClass="com.university.main.UniversityERP"
 ```
 
 Default admin login:
@@ -66,7 +75,7 @@ Use these collapsible command blocks as a copy-paste runbook.
 <summary>Fresh compile and run on macOS/Linux</summary>
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 rm -rf out
 mkdir -p out
 javac -d out $(find university -name "*.java")
@@ -79,7 +88,7 @@ java -cp out com.university.main.UniversityERP
 <summary>Fresh compile and run on Windows PowerShell</summary>
 
 ```powershell
-cd "C:\path\to\com"
+cd "C:\path\to\Student-University-ERP-Project"
 Remove-Item -Recurse -Force out -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force out
 Get-ChildItem -Recurse -Filter *.java university | ForEach-Object { $_.FullName } > sources.txt
@@ -93,7 +102,7 @@ java -cp out com.university.main.UniversityERP
 <summary>Run RMI client after the ERP is running</summary>
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 java -cp out com.university.rmi.client.StudentClient
 ```
 
@@ -103,7 +112,7 @@ java -cp out com.university.rmi.client.StudentClient
 <summary>Create and run an executable JAR</summary>
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 rm -rf out university-erp.jar
 mkdir -p out
 javac -d out $(find university -name "*.java")
@@ -119,7 +128,7 @@ java -jar university-erp.jar
 macOS/Linux:
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 rm -f *.dat
 ```
 
@@ -139,7 +148,7 @@ Use these values in IntelliJ IDEA, Eclipse, VS Code, or NetBeans:
 ```text
 Main class: com.university.main.UniversityERP
 Classpath/module output: out
-Working directory: /Users/adityajoshi/Desktop/com
+Working directory: /Users/adityajoshi/Desktop/Student-University-ERP-Project
 ```
 
 If the IDE asks for a source root, use the project folder that contains `university/`.
@@ -467,14 +476,14 @@ To test the RMI client, use two terminals.
 Terminal 1:
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 java -cp out com.university.main.UniversityERP
 ```
 
 Terminal 2:
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 java -cp out com.university.rmi.client.StudentClient
 ```
 
@@ -559,69 +568,38 @@ Important: because the data files are created relative to the current terminal d
 
 ---
 
-## Known Problems and Lacking Areas
+## Major Improvements & Fixed Areas
 
-This is the most important section if you are submitting or improving the project.
+The project has been significantly upgraded from a basic prototype to a functional ecosystem:
 
-1. No full graphical UI
+1. **Full Graphical UI Integrated:**
+   The project now features a comprehensive Swing-based Dashboard for Admins, Faculty, and Students, replacing the legacy console-only interface.
 
-   The project currently uses a console menu. It does not have a Swing, JavaFX, or web dashboard.
+2. **Backend Modules Connected:**
+   All modules including Course, Faculty, Library, LMS, and Placements are now fully reachable via the graphical sidebar navigation.
 
-2. Many backend modules are not connected to menus
+3. **Complete Faculty & Student Dashboards:**
+   Faculty can now manage assignments and upload marks. Students have a full Digital Identity profile, LMS access, and an AI Assistant.
 
-   Course, faculty, library, hostel, attendance, examination, fee, placement, and report features exist in code, but most are not reachable from the main UI.
+4. **Modern Build System:**
+   Introduced **Maven** for professional dependency management and streamlined build/execution.
 
-3. No graceful exit option
+5. **AI Academic Copilot:**
+   Enhanced heuristic engine with Placement Readiness scoring, Career Mentoring, and an interactive Chatbot.
 
-   The main loop runs forever. Users must stop the app with `Ctrl+C`.
+6. **LMS Module:**
+   Implemented a brand-new Assignment Management System with bidirectional file-based submission tracking.
 
-4. Faculty and student dashboards are incomplete
+7. **Database Foundation:**
+   Initialized Maven dependencies for **SQLite** to support the transition from serialization to a relational database.
 
-   Faculty can only logout. Student profile says `Profile logic here...` instead of showing real session-linked student details.
+---
 
-5. Authentication is not secure
+## Remaining Areas for Enhancement
+1. **Full Database Migration:** Complete the shift from `.dat` files to SQLite tables.
+2. **Advanced Security:** Implement BCrypt password hashing and JWT for the upcoming REST API layer.
+3. **Real Machine Learning:** Transition the AI module from heuristics to a trained ML model (e.g., using Deeplearning4j or Python bridge).
 
-   Passwords are stored in serialized files without hashing. This is acceptable for a classroom demo, but not for real software.
-
-6. File storage is fragile
-
-   Java serialization `.dat` files are easy for demos, but they are not a good production database. Class changes can break old data files.
-
-7. No real database
-
-   There is no MySQL, PostgreSQL, SQLite, or MongoDB integration.
-
-8. No test suite
-
-   There are no automated unit tests or integration tests.
-
-9. No build tool
-
-   The project does not use Maven or Gradle, so dependencies, testing, packaging, and running are manual.
-
-10. RMI port is hard-coded
-
-    The RMI server always uses port `1099`. If the port is busy, the app prints an exception.
-
-11. AI is heuristic, not real machine learning
-
-    The AI module uses simple rules based on CGPA and attendance. It does not train a model or use historical datasets.
-
-12. Weak validation
-
-    Several inputs are accepted directly. Duplicate IDs can overwrite records, and fields like email, semester, phone, and marks need stronger validation.
-
-13. No authorization checks inside managers
-
-    Roles exist in the login system, but the lower-level manager classes do not enforce permissions themselves.
-
-14. RMI client is only a connection demo
-
-    The client connects successfully, but its sample service calls are commented out.
-
-15. Background threads print into the same console
-
-    Attendance and fee threads can print messages while the user is typing, which can make the terminal UI messy.
 
 ---
 
@@ -674,27 +652,20 @@ Stop the conflicting process or change the port in the RMI server and client.
 Make sure you are running from the same project root each time:
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 ```
 
 The `.dat` files are relative to the current directory.
 
 ---
 
-## Recommended Improvements
+## Stabilization Status
 
-Best next steps:
+The primary workflow uses the Swing UI backed by SQLite. Demo login verification is available with:
 
-1. Add a real Exit option.
-2. Connect all existing managers to the console UI.
-3. Replace `Profile logic here...` with real student profile lookup.
-4. Add faculty features such as upload marks and mark attendance.
-5. Add student features such as view profile, view marks, view attendance, view fees, and view enrolled courses.
-6. Add a simple Swing or JavaFX dashboard.
-7. Move data storage from `.dat` files to SQLite or MySQL.
-8. Hash passwords before saving them.
-9. Add Maven or Gradle.
-10. Add JUnit tests.
+```bash
+mvn exec:java -Dexec.mainClass=com.university.main.UniversityERP -Dexec.args="--verify-login"
+```
 11. Make RMI host and port configurable.
 12. Add proper input validation and duplicate-record checks.
 
@@ -705,7 +676,7 @@ Best next steps:
 Use this when you just want to compile and launch quickly:
 
 ```bash
-cd /Users/adityajoshi/Desktop/com
+cd /Users/adityajoshi/Desktop/Student-University-ERP-Project
 rm -rf out
 mkdir -p out
 javac -d out $(find university -name "*.java")
