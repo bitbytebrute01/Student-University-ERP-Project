@@ -172,6 +172,9 @@ public class UniversityERP {
 
             Assignment loadedAssignment = assignmentManager.getAssignmentById(assignment.getId());
             if (loadedAssignment == null) throw new IllegalStateException("Created assignment was not found.");
+            if (assignmentManager.getUnreadAssignmentNotificationCount(reloadedAlice.getId()) <= 0) {
+                throw new IllegalStateException("Assignment notification was not created for enrolled student.");
+            }
 
             User studentUser = authManager.authenticate("alice", "pass");
             SessionManager.startSession(studentUser);
@@ -183,25 +186,41 @@ public class UniversityERP {
 
             Path sourcePdf = Files.createTempFile("alice-assignment-", ".pdf");
             Files.writeString(sourcePdf, "%PDF-1.4\nAlice verification submission\n%%EOF\n");
-            String submissionPath = MediaManager.saveSubmissionFile(sourcePdf.toFile(),
+            Path sourceZip = Files.createTempFile("alice-assignment-bundle-", ".zip");
+            Files.writeString(sourceZip, "verification bundle");
+            List<String> submissionPaths = MediaManager.saveSubmissionFiles(
+                    List.of(sourcePdf.toFile(), sourceZip.toFile()),
                     "submissions/" + assignment.getId() + "/" + reloadedAlice.getId());
-            Submission submission = new Submission("VERIFY-S001-A-LMS", assignment.getId(), reloadedAlice.getId(), submissionPath);
+            Submission submission = new Submission("VERIFY-S001-A-LMS", assignment.getId(), reloadedAlice.getId(), null);
+            submission.setSubmissionText("Verification text response for the LMS assignment workflow.");
+            submission.setAttachmentPaths(submissionPaths);
             assignmentManager.submitAssignment(submission);
 
             Submission loadedSubmission = assignmentManager.getStudentSubmission(reloadedAlice.getId(), assignment.getId());
-            if (loadedSubmission == null || loadedSubmission.isGraded() || !Files.exists(Path.of(loadedSubmission.getFilePath()))) {
+            if (loadedSubmission == null || loadedSubmission.isGraded() || loadedSubmission.getAttachmentPaths().size() != 2) {
                 throw new IllegalStateException("Assignment submission did not persist as submitted.");
             }
             if (!assignmentSubmissionRecordExists(assignment.getId(), reloadedAlice.getId())) {
                 throw new IllegalStateException("assignment_submissions record was not created.");
             }
+            boolean workflowNotificationStillUnread = assignmentManager.getUnreadAssignmentNotifications(reloadedAlice.getId()).stream()
+                    .anyMatch(notification -> assignment.getId().equals(notification.getAssignmentId()));
+            if (workflowNotificationStillUnread) {
+                throw new IllegalStateException("Assignment notification was not marked read after submission.");
+            }
 
             User adminUser = authManager.authenticate("admin", "admin123");
             SessionManager.startSession(adminUser);
             Path downloadDir = Files.createTempDirectory("admin-submission-download-");
-            Path downloaded = assignmentManager.downloadSubmission(loadedSubmission.getId(), downloadDir.toFile());
-            if (!Files.exists(downloaded) || Files.size(downloaded) == 0) {
-                throw new IllegalStateException("Admin download did not produce a file.");
+            List<Path> downloaded = assignmentManager.downloadSubmissionFiles(loadedSubmission.getId(), downloadDir.toFile());
+            if (downloaded.size() != 2 || downloaded.stream().anyMatch(path -> {
+                try {
+                    return !Files.exists(path) || Files.size(path) == 0;
+                } catch (Exception e) {
+                    return true;
+                }
+            })) {
+                throw new IllegalStateException("Admin download did not produce all files.");
             }
 
             assignmentManager.gradeSubmission(loadedSubmission.getId(), 95.0, "Verified workflow.");
@@ -212,14 +231,15 @@ public class UniversityERP {
             }
 
             SessionManager.endSession();
-            System.out.println("Verified workflows: course creation, assignment publishing, student submission, database persistence, admin download, grading.");
+            System.out.println("Verified workflows: course creation, assignment publishing, notification, student visibility, text and multi-file submission, database persistence, admin download, grading.");
         } catch (Exception e) {
             throw new IllegalStateException("Workflow verification failed: " + e.getMessage(), e);
         }
     }
 
     private static boolean assignmentSubmissionRecordExists(String assignmentId, String studentId) throws Exception {
-        String sql = "SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = ? AND student_id = ? AND file_path IS NOT NULL";
+        String sql = "SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = ? AND student_id = ? " +
+                "AND submission_text IS NOT NULL AND file_path IS NOT NULL";
         try (Connection conn = com.university.db.DatabaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, assignmentId);

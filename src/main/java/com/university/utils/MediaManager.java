@@ -4,22 +4,33 @@ import javax.imageio.ImageIO;
 import java.io.*;
 import java.awt.image.BufferedImage;
 import java.nio.file.*;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 public class MediaManager {
     private static final String DEFAULT_UPLOAD_DIR = "uploads";
+    private static final String TEMP_DIR_NAME = "temp";
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     private static final List<String> IMAGE_EXTENSIONS = Arrays.asList("png", "jpg", "jpeg");
     private static final List<String> DOCUMENT_EXTENSIONS = Arrays.asList("pdf", "docx", "zip");
     private static final List<String> GENERAL_EXTENSIONS = Arrays.asList("png", "jpg", "jpeg", "pdf", "docx", "zip");
 
+    // retention in minutes for temp files
+    private static final long TEMP_RETENTION_MINUTES = Long.parseLong(System.getProperty("university.upload.temp.retention.minutes", "30"));
+
     static {
-        File dir = uploadRoot().toFile();
-        if (!dir.exists()) dir.mkdirs();
+        try {
+            Files.createDirectories(uploadRoot());
+            Files.createDirectories(uploadRoot().resolve(TEMP_DIR_NAME));
+        } catch (IOException e) {
+            throw new RuntimeException("Unable to initialize upload directories: " + e.getMessage(), e);
+        }
     }
 
+    // Save directly to final directory (legacy callers)
     public static String saveFile(File file, String subDir) throws IOException {
         validateFile(file, GENERAL_EXTENSIONS, "file");
         return copyFile(file, subDir);
@@ -36,23 +47,100 @@ public class MediaManager {
         return copyFile(file, subDir);
     }
 
+    public static List<String> saveSubmissionFiles(List<File> files, String subDir) throws IOException {
+        if (files == null || files.isEmpty()) {
+            throw new FileNotFoundException("No assignment submission files selected.");
+        }
+        List<String> savedPaths = new ArrayList<>();
+        for (File file : files) {
+            savedPaths.add(saveSubmissionFile(file, subDir));
+        }
+        return savedPaths;
+    }
+
     public static String savePdf(File file, String subDir) throws IOException {
         validateFile(file, Arrays.asList("pdf"), "PDF");
         return copyFile(file, subDir);
     }
 
+    // New API: save to temp directory for later finalize/rollback
+    public static String saveTemp(File file) throws IOException {
+        validateFile(file, GENERAL_EXTENSIONS, "file");
+        return copyToTemp(file);
+    }
+
+    public static String saveTempImage(File file) throws IOException {
+        validateFile(file, IMAGE_EXTENSIONS, "image");
+        validateReadableImage(file);
+        return copyToTemp(file);
+    }
+
     private static String copyFile(File file, String subDir) throws IOException {
         Path targetDirectory = resolveSafeUploadDirectory(subDir);
         Files.createDirectories(targetDirectory);
-        
         String extension = getFileExtension(file.getName());
         String fileName = UUID.randomUUID().toString() + "." + extension;
         Path targetPath = targetDirectory.resolve(fileName);
-        
         Files.createDirectories(targetPath.getParent());
         Files.copy(file.toPath(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-        
         return targetPath.toString();
+    }
+
+    private static String copyToTemp(File file) throws IOException {
+        Path tempDir = uploadRoot().resolve(TEMP_DIR_NAME);
+        Files.createDirectories(tempDir);
+        String extension = getFileExtension(file.getName());
+        String fileName = UUID.randomUUID().toString() + "." + extension;
+        Path targetPath = tempDir.resolve(fileName);
+        Files.copy(file.toPath(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        return targetPath.toString();
+    }
+
+    // Finalize a temp file into a destination subdirectory (returns final path)
+    public static String finalizeUpload(String tempPathStr, String destSubDir) throws IOException {
+        if (tempPathStr == null) throw new IllegalArgumentException("tempPath is required");
+        Path tempPath = Path.of(tempPathStr).toAbsolutePath().normalize();
+        Path tempDir = uploadRoot().resolve(TEMP_DIR_NAME).toAbsolutePath().normalize();
+        if (!tempPath.startsWith(tempDir)) {
+            // already final or external path
+            return tempPath.toString();
+        }
+
+        Path destDir = resolveSafeUploadDirectory(destSubDir);
+        Files.createDirectories(destDir);
+        String fileName = tempPath.getFileName().toString();
+        Path finalPath = destDir.resolve(fileName).toAbsolutePath().normalize();
+        Files.move(tempPath, finalPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        return finalPath.toString();
+    }
+
+    public static boolean isTempPath(String path) {
+        if (path == null) return false;
+        try {
+            Path p = Path.of(path).toAbsolutePath().normalize();
+            Path tempDir = uploadRoot().resolve(TEMP_DIR_NAME).toAbsolutePath().normalize();
+            return p.startsWith(tempDir);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // Cleanup old temp files older than retention
+    public static int cleanupOldTempFiles() {
+        long thresholdMillis = System.currentTimeMillis() - (TEMP_RETENTION_MINUTES * 60L * 1000L);
+        int deleted = 0;
+        Path tempDir = uploadRoot().resolve(TEMP_DIR_NAME);
+        try (Stream<Path> stream = Files.list(tempDir)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                try {
+                    if (Files.isRegularFile(p) && Files.getLastModifiedTime(p).toMillis() < thresholdMillis) {
+                        Files.deleteIfExists(p);
+                        deleted++;
+                    }
+                } catch (IOException ignored) {}
+            }
+        } catch (IOException ignored) {}
+        return deleted;
     }
 
     public static void deleteFile(String filePath) {

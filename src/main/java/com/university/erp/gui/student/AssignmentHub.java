@@ -17,6 +17,7 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,6 +27,7 @@ public class AssignmentHub extends JPanel {
     private JTable assignmentTable;
     private DefaultTableModel tableModel;
     private String studentId;
+    private JLabel notificationLabel;
 
     public AssignmentHub() {
         this(StudentContext.requireCurrentStudent());
@@ -36,14 +38,20 @@ public class AssignmentHub extends JPanel {
             throw new IllegalStateException("AssignmentHub requires a valid Student.");
         }
         studentId = student.getId();
-        setLayout(new MigLayout("ins 30, wrap 1, fillx", "[grow]", "[]20[grow]20[]"));
+        setLayout(new MigLayout("ins 30, wrap 1, fillx", "[grow]", "[]12[]12[grow]20[]"));
         ThemeManager.stylePage(this);
 
-        JLabel title = new JLabel("LMS: Enrolled Course Assignments");
+        JLabel title = new JLabel("LMS: My Assignments");
         title.setFont(new Font("Inter", Font.BOLD, 24));
         add(title);
 
-        String[] cols = {"ID", "Course", "Title", "Deadline", "Countdown", "Status", "Grade", "Feedback"};
+        notificationLabel = new JLabel();
+        notificationLabel.setFont(new Font("Inter", Font.BOLD, 13));
+        notificationLabel.setOpaque(true);
+        notificationLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        add(notificationLabel, "growx");
+
+        String[] cols = {"ID", "Course", "Title", "Description", "Due Date", "Due Time", "Time Remaining", "Status", "Grade", "Feedback", "Files"};
         tableModel = new DefaultTableModel(cols, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -63,8 +71,9 @@ public class AssignmentHub extends JPanel {
     }
 
     private void refreshTable() {
+        refreshNotifications();
         tableModel.setRowCount(0);
-        SimpleDateFormat deadlineFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+        SimpleDateFormat dueDateFormat = new SimpleDateFormat("yyyy-MM-dd");
         List<Assignment> assignments = assignmentManager.getAssignmentsForStudent(studentId);
         for (Assignment a : assignments) {
             Course c = courseManager.searchById(a.getCourseId());
@@ -72,18 +81,35 @@ public class AssignmentHub extends JPanel {
             String status = assignmentManager.getStudentAssignmentStatus(studentId, a);
             String grade = (s != null && s.isGraded()) ? String.valueOf(s.getMarks()) : "-";
             String feedback = (s != null && s.getFeedback() != null && !s.getFeedback().isBlank()) ? s.getFeedback() : "-";
-            String deadline = a.getDeadline() == null ? "-" : deadlineFormat.format(a.getDeadline());
+            String dueDate = a.getDeadline() == null ? "-" : dueDateFormat.format(a.getDeadline());
+            String files = s == null || !s.hasAttachments() ? "-" : s.getAttachmentPaths().size() + " file(s)";
             String courseName = c == null ? a.getCourseId() : c.getCourseName();
             tableModel.addRow(new Object[]{
                     a.getId(),
                     courseName,
                     a.getTitle(),
-                    deadline,
+                    a.getDescription(),
+                    dueDate,
+                    a.getDueTime() == null ? "-" : a.getDueTime(),
                     assignmentManager.getDeadlineCountdown(a),
                     status,
                     grade,
-                    feedback
+                    feedback,
+                    files
             });
+        }
+    }
+
+    private void refreshNotifications() {
+        int unread = assignmentManager.getUnreadAssignmentNotificationCount(studentId);
+        if (unread > 0) {
+            notificationLabel.setText("New Assignment Assigned - " + unread + " unread notification(s)");
+            notificationLabel.setBackground(new Color(255, 245, 230));
+            notificationLabel.setForeground(ThemeManager.WARNING_ORANGE);
+        } else {
+            notificationLabel.setText("No unread assignment notifications");
+            notificationLabel.setBackground(ThemeManager.surfaceAlt());
+            notificationLabel.setForeground(ThemeManager.textSecondary());
         }
     }
 
@@ -94,23 +120,64 @@ public class AssignmentHub extends JPanel {
             return;
         }
         String assignmentId = (String) tableModel.getValueAt(row, 0);
-        String status = (String) tableModel.getValueAt(row, 5);
+        String status = (String) tableModel.getValueAt(row, 7);
         
         if ("Graded".equals(status)) {
             JOptionPane.showMessageDialog(this, "This assignment has already been graded and cannot be resubmitted.");
             return;
         }
 
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileFilter(new FileNameExtensionFilter("Assignment files (*.pdf, *.docx, *.zip)", "pdf", "docx", "zip"));
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+        JTextArea responseArea = new JTextArea(6, 36);
+        responseArea.setLineWrap(true);
+        responseArea.setWrapStyleWord(true);
+        DefaultListModel<File> fileModel = new DefaultListModel<>();
+        JList<File> fileList = new JList<>(fileModel);
+        fileList.setVisibleRowCount(4);
+        fileList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof File) {
+                    setText(((File) value).getName());
+                }
+                return this;
+            }
+        });
+
+        JButton addFilesBtn = new JButton("Add PDF/DOCX/ZIP Files");
+        addFilesBtn.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setMultiSelectionEnabled(true);
+            chooser.setFileFilter(new FileNameExtensionFilter("Assignment files (*.pdf, *.docx, *.zip)", "pdf", "docx", "zip"));
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                for (File file : chooser.getSelectedFiles()) {
+                    fileModel.addElement(file);
+                }
+            }
+        });
+
+        JPanel panel = new JPanel(new MigLayout("fillx, wrap 1, ins 8", "[grow]", "[]6[]10[]6[grow]"));
+        panel.add(new JLabel("Text Response:"), "growx");
+        panel.add(new JScrollPane(responseArea), "growx, h 130!");
+        panel.add(addFilesBtn, "left");
+        panel.add(new JScrollPane(fileList), "growx, h 100!");
+
+        int option = JOptionPane.showConfirmDialog(this, panel, "Submit Assignment", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (option == JOptionPane.OK_OPTION) {
             try {
-                File file = chooser.getSelectedFile();
-                String savedPath = MediaManager.saveSubmissionFile(file, "submissions/" + assignmentId + "/" + studentId);
-                
-                Submission s = new Submission("SUB-" + UUID.randomUUID().toString().substring(0, 8), assignmentId, studentId, savedPath);
+                List<File> selectedFiles = new ArrayList<>();
+                for (int i = 0; i < fileModel.size(); i++) {
+                    selectedFiles.add(fileModel.get(i));
+                }
+                List<String> savedPaths = selectedFiles.isEmpty()
+                        ? new ArrayList<>()
+                        : MediaManager.saveSubmissionFiles(selectedFiles, "submissions/" + assignmentId + "/" + studentId);
+
+                Submission s = new Submission("SUB-" + UUID.randomUUID().toString().substring(0, 8), assignmentId, studentId, null);
+                s.setSubmissionText(responseArea.getText());
+                s.setAttachmentPaths(savedPaths);
                 assignmentManager.submitAssignment(s);
-                
+
                 JOptionPane.showMessageDialog(this, "Assignment submitted successfully. Status: " + s.getStatus());
                 refreshTable();
             } catch (Exception ex) {

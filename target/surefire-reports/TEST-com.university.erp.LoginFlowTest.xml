@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.university.erp.LoginFlowTest" time="2.166" tests="6" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.university.erp.LoginFlowTest" time="2.006" tests="8" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="21"/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
-    <property name="sun.awt.enableExtraMouseButtons" value="true"/>
     <property name="java.class.path" value="/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/test-classes:/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/classes:/Users/adityajoshi/.m2/repository/org/xerial/sqlite-jdbc/3.42.0.0/sqlite-jdbc-3.42.0.0.jar:/Users/adityajoshi/.m2/repository/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar:/Users/adityajoshi/.m2/repository/org/mindrot/jbcrypt/0.4/jbcrypt-0.4.jar:/Users/adityajoshi/.m2/repository/com/formdev/flatlaf/3.2/flatlaf-3.2.jar:/Users/adityajoshi/.m2/repository/com/formdev/flatlaf-extras/3.2/flatlaf-extras-3.2.jar:/Users/adityajoshi/.m2/repository/com/github/weisj/jsvg/1.0.0/jsvg-1.0.0.jar:/Users/adityajoshi/.m2/repository/com/miglayout/miglayout-swing/11.1/miglayout-swing-11.1.jar:/Users/adityajoshi/.m2/repository/com/miglayout/miglayout-core/11.1/miglayout-core-11.1.jar:/Users/adityajoshi/.m2/repository/org/jfree/jfreechart/1.5.4/jfreechart-1.5.4.jar:/Users/adityajoshi/.m2/repository/org/kordamp/ikonli/ikonli-swing/12.3.1/ikonli-swing-12.3.1.jar:/Users/adityajoshi/.m2/repository/org/kordamp/ikonli/ikonli-core/12.3.1/ikonli-core-12.3.1.jar:/Users/adityajoshi/.m2/repository/org/kordamp/ikonli/ikonli-materialdesign2-pack/12.3.1/ikonli-materialdesign2-pack-12.3.1.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter/5.9.2/junit-jupiter-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.9.2/junit-jupiter-api-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar:/Users/adityajoshi/.m2/repository/org/junit/platform/junit-platform-commons/1.9.2/junit-platform-commons-1.9.2.jar:/Users/adityajoshi/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.9.2/junit-jupiter-params-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.9.2/junit-jupiter-engine-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/junit/platform/junit-platform-engine/1.9.2/junit-platform-engine-1.9.2.jar:"/>
+    <property name="sun.awt.enableExtraMouseButtons" value="true"/>
     <property name="java.vm.vendor" value="Homebrew"/>
     <property name="sun.arch.data.model" value="64"/>
     <property name="java.vendor.url" value="https://github.com/Homebrew/homebrew-core/issues"/>
@@ -14,7 +14,7 @@
     <property name="sun.java.launcher" value="SUN_STANDARD"/>
     <property name="user.country" value="US"/>
     <property name="sun.boot.library.path" value="/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/Home/lib"/>
-    <property name="sun.java.command" value="/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/surefire/surefirebooter-20260605042418579_3.jar /Users/adityajoshi/Desktop/Student-University-ERP-Project/target/surefire 2026-06-05T04-24-18_545-jvmRun1 surefire-20260605042418579_1tmp surefire_0-20260605042418579_2tmp"/>
+    <property name="sun.java.command" value="/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/surefire/surefirebooter-20260605140003446_3.jar /Users/adityajoshi/Desktop/Student-University-ERP-Project/target/surefire 2026-06-05T14-00-03_417-jvmRun1 surefire-20260605140003446_1tmp surefire_0-20260605140003446_2tmp"/>
     <property name="http.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
     <property name="jdk.debug" value="release"/>
     <property name="surefire.test.class.path" value="/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/test-classes:/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/classes:/Users/adityajoshi/.m2/repository/org/xerial/sqlite-jdbc/3.42.0.0/sqlite-jdbc-3.42.0.0.jar:/Users/adityajoshi/.m2/repository/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar:/Users/adityajoshi/.m2/repository/org/mindrot/jbcrypt/0.4/jbcrypt-0.4.jar:/Users/adityajoshi/.m2/repository/com/formdev/flatlaf/3.2/flatlaf-3.2.jar:/Users/adityajoshi/.m2/repository/com/formdev/flatlaf-extras/3.2/flatlaf-extras-3.2.jar:/Users/adityajoshi/.m2/repository/com/github/weisj/jsvg/1.0.0/jsvg-1.0.0.jar:/Users/adityajoshi/.m2/repository/com/miglayout/miglayout-swing/11.1/miglayout-swing-11.1.jar:/Users/adityajoshi/.m2/repository/com/miglayout/miglayout-core/11.1/miglayout-core-11.1.jar:/Users/adityajoshi/.m2/repository/org/jfree/jfreechart/1.5.4/jfreechart-1.5.4.jar:/Users/adityajoshi/.m2/repository/org/kordamp/ikonli/ikonli-swing/12.3.1/ikonli-swing-12.3.1.jar:/Users/adityajoshi/.m2/repository/org/kordamp/ikonli/ikonli-core/12.3.1/ikonli-core-12.3.1.jar:/Users/adityajoshi/.m2/repository/org/kordamp/ikonli/ikonli-materialdesign2-pack/12.3.1/ikonli-materialdesign2-pack-12.3.1.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter/5.9.2/junit-jupiter-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.9.2/junit-jupiter-api-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar:/Users/adityajoshi/.m2/repository/org/junit/platform/junit-platform-commons/1.9.2/junit-platform-commons-1.9.2.jar:/Users/adityajoshi/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.9.2/junit-jupiter-params-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.9.2/junit-jupiter-engine-5.9.2.jar:/Users/adityajoshi/.m2/repository/org/junit/platform/junit-platform-engine/1.9.2/junit-platform-engine-1.9.2.jar:"/>
@@ -32,7 +32,7 @@
     <property name="java.specification.name" value="Java Platform API Specification"/>
     <property name="java.awt.headless" value="true"/>
     <property name="apple.awt.application.name" value="ForkedBooter"/>
-    <property name="surefire.real.class.path" value="/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/surefire/surefirebooter-20260605042418579_3.jar"/>
+    <property name="surefire.real.class.path" value="/Users/adityajoshi/Desktop/Student-University-ERP-Project/target/surefire/surefirebooter-20260605140003446_3.jar"/>
     <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
     <property name="ftp.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
     <property name="java.runtime.version" value="21.0.11"/>
@@ -43,6 +43,7 @@
     <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
     <property name="file.encoding" value="UTF-8"/>
     <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="skipTests" value="false"/>
     <property name="java.vendor.version" value="Homebrew"/>
     <property name="localRepository" value="/Users/adityajoshi/.m2/repository"/>
     <property name="java.vendor.url.bug" value="https://github.com/Homebrew/homebrew-core/issues"/>
@@ -56,32 +57,42 @@
     <property name="java.vm.info" value="mixed mode, sharing"/>
     <property name="stderr.encoding" value="UTF-8"/>
     <property name="java.vendor" value="Homebrew"/>
+    <property name="university.upload.dir" value="/var/folders/79/3n5pv8c16mng1qdqlvvlkk600000gn/T/erp-integration-3394192298469549407"/>
     <property name="java.vm.version" value="21.0.11"/>
     <property name="sun.io.unicode.encoding" value="UnicodeBig"/>
     <property name="socksNonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
     <property name="java.class.version" value="65.0"/>
+    <property name="university.db.url" value="jdbc:sqlite:/var/folders/79/3n5pv8c16mng1qdqlvvlkk600000gn/T/erp-integration-3394192298469549407/test.db"/>
   </properties>
-  <testcase name="adminLoginDoesNotRequireStudentRecord" classname="com.university.erp.LoginFlowTest" time="0.783">
+  <testcase name="adminLoginDoesNotRequireStudentRecord" classname="com.university.erp.LoginFlowTest" time="0.393">
     <system-out><![CDATA[Relational Database Schema Initialized successfully.
 ]]></system-out>
   </testcase>
-  <testcase name="aliceLoginResolvesStudentBeforeOpeningStudentScreens" classname="com.university.erp.LoginFlowTest" time="0.491">
+  <testcase name="aliceLoginResolvesStudentBeforeOpeningStudentScreens" classname="com.university.erp.LoginFlowTest" time="0.422">
     <system-out><![CDATA[Relational Database Schema Initialized successfully.
 ]]></system-out>
   </testcase>
-  <testcase name="lateSubmissionsAreMarkedAutomatically" classname="com.university.erp.LoginFlowTest" time="0.189">
+  <testcase name="lateSubmissionsAreMarkedAutomatically" classname="com.university.erp.LoginFlowTest" time="0.187">
     <system-out><![CDATA[Relational Database Schema Initialized successfully.
 ]]></system-out>
   </testcase>
-  <testcase name="profilePhotoPersistsAndDashboardRefreshes" classname="com.university.erp.LoginFlowTest" time="0.204">
+  <testcase name="legacyMillisecondDeadlinesStillRefreshLateSubmissionStatus" classname="com.university.erp.LoginFlowTest" time="0.179">
     <system-out><![CDATA[Relational Database Schema Initialized successfully.
 ]]></system-out>
   </testcase>
-  <testcase name="facultyLoginUsesFacultyReferenceForFacultyScreens" classname="com.university.erp.LoginFlowTest" time="0.301">
+  <testcase name="profilePhotoPersistsAndDashboardRefreshes" classname="com.university.erp.LoginFlowTest" time="0.201">
     <system-out><![CDATA[Relational Database Schema Initialized successfully.
 ]]></system-out>
   </testcase>
-  <testcase name="assignmentCanBeSubmittedAndGraded" classname="com.university.erp.LoginFlowTest" time="0.187">
+  <testcase name="facultyLoginUsesFacultyReferenceForFacultyScreens" classname="com.university.erp.LoginFlowTest" time="0.243">
+    <system-out><![CDATA[Relational Database Schema Initialized successfully.
+]]></system-out>
+  </testcase>
+  <testcase name="enrollingStudentAfterAssignmentCreatesVisibilityAndNotification" classname="com.university.erp.LoginFlowTest" time="0.182">
+    <system-out><![CDATA[Relational Database Schema Initialized successfully.
+]]></system-out>
+  </testcase>
+  <testcase name="assignmentCanBeSubmittedAndGraded" classname="com.university.erp.LoginFlowTest" time="0.194">
     <system-out><![CDATA[Relational Database Schema Initialized successfully.
 ]]></system-out>
   </testcase>

@@ -3,6 +3,7 @@ package com.university.courses;
 import com.university.db.DatabaseManager;
 import com.university.exceptions.CourseNotFoundException;
 import com.university.interfaces.Searchable;
+import com.university.lms.AssignmentManager;
 import com.university.models.Course;
 
 import java.sql.*;
@@ -45,13 +46,35 @@ public class CourseManager implements Searchable<Course> {
 
     public void enrollStudent(String courseId, String studentId) throws CourseNotFoundException {
         String sql = "INSERT OR IGNORE INTO enrollments (course_id, student_id) VALUES (?, ?)";
-        try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, courseId);
-            pstmt.setString(2, studentId);
-            pstmt.executeUpdate();
+        try (Connection conn = DatabaseManager.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                if (!recordExists(conn, "courses", "course_id", courseId)) {
+                    throw new CourseNotFoundException("Course not found: " + courseId);
+                }
+                if (!recordExists(conn, "students", "id", studentId)) {
+                    throw new IllegalArgumentException("Student not found: " + studentId);
+                }
+
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, courseId);
+                    pstmt.setString(2, studentId);
+                    pstmt.executeUpdate();
+                }
+                new AssignmentManager().createNotificationsForStudentCourse(conn, studentId, courseId);
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+                if (e instanceof CourseNotFoundException courseNotFoundException) {
+                    throw courseNotFoundException;
+                }
+                if (e instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                throw new IllegalStateException("Error enrolling student: " + e.getMessage(), e);
+            }
         } catch (SQLException e) {
-            System.err.println("Error enrolling student: " + e.getMessage());
+            throw new IllegalStateException("Error enrolling student: " + e.getMessage(), e);
         }
     }
 
@@ -175,5 +198,14 @@ public class CourseManager implements Searchable<Course> {
         );
         c.setAssignedFacultyId(rs.getString("faculty_id"));
         return c;
+    }
+
+    private boolean recordExists(Connection conn, String table, String column, String value) throws SQLException {
+        String sql = "SELECT 1 FROM " + table + " WHERE " + column + " = ?";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, value);
+            ResultSet rs = pstmt.executeQuery();
+            return rs.next();
+        }
     }
 }

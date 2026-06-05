@@ -144,28 +144,57 @@ class LoginFlowTest {
 
         List<Assignment> visibleAssignments = assignmentManager.getAssignmentsForStudent("S001");
         assertTrue(visibleAssignments.stream().anyMatch(a -> "A-TST-1".equals(a.getId())));
+        assertEquals(1, assignmentManager.getUnreadAssignmentNotificationCount("S001"));
+        assertTrue(assignmentManager.getUnreadAssignmentNotifications("S001").get(0).getMessage().contains("Stack Implementation"));
         assertEquals("Pending", assignmentManager.getStudentAssignmentStatus("S001", assignment));
         assertFalse(assignmentManager.getDeadlineCountdown(assignment).isBlank());
 
         File pdf = tempDir.resolve("submission.pdf").toFile();
         Files.writeString(pdf.toPath(), "%PDF-1.4\nStudent submission\n%%EOF\n");
-        String savedPath = MediaManager.saveSubmissionFile(pdf, "submissions/" + assignment.getId() + "/S001");
+        File zip = tempDir.resolve("source-bundle.zip").toFile();
+        Files.writeString(zip.toPath(), "zip-placeholder");
+        List<String> savedPaths = MediaManager.saveSubmissionFiles(List.of(pdf, zip),
+                "submissions/" + assignment.getId() + "/S001");
 
-        Submission submission = new Submission("SUB-TST-1", assignment.getId(), "S001", savedPath);
+        Submission submission = new Submission("SUB-TST-1", assignment.getId(), "S001", null);
+        submission.setSubmissionText("Here is my stack implementation and supporting source bundle.");
+        submission.setAttachmentPaths(savedPaths);
         assignmentManager.submitAssignment(submission);
 
         Submission loaded = assignmentManager.getStudentSubmission("S001", assignment.getId());
         assertNotNull(loaded);
         assertFalse(loaded.isGraded());
-        assertEquals(savedPath, loaded.getFilePath());
+        assertEquals("Here is my stack implementation and supporting source bundle.", loaded.getSubmissionText());
+        assertEquals(2, loaded.getAttachmentPaths().size());
         assertEquals("Submitted", loaded.getStatus());
+        assertEquals(0, assignmentManager.getUnreadAssignmentNotificationCount("S001"));
         assertEquals(1, countRows("submissions"));
         assertEquals(1, countRows("assignment_submissions"));
+        assertEquals(2, countRows("assignment_submission_files"));
 
-        Path downloaded = assignmentManager.downloadSubmission(loaded.getId(), tempDir.resolve("downloads").toFile());
-        assertTrue(Files.exists(downloaded));
+        List<Path> downloaded = assignmentManager.downloadSubmissionFiles(loaded.getId(), tempDir.resolve("downloads").toFile());
+        assertEquals(2, downloaded.size());
+        assertTrue(downloaded.stream().allMatch(Files::exists));
 
-        assignmentManager.gradeSubmission(loaded.getId(), 88.0, "Good work.");
+        File docx = tempDir.resolve("revised-submission.docx").toFile();
+        Files.writeString(docx.toPath(), "docx-placeholder");
+        List<String> revisedPaths = MediaManager.saveSubmissionFiles(List.of(docx),
+                "submissions/" + assignment.getId() + "/S001");
+        Submission revised = new Submission("SUB-TST-REVISED-ID-SHOULD-NOT-REPLACE", assignment.getId(), "S001", null);
+        revised.setSubmissionText("Revised response.");
+        revised.setAttachmentPaths(revisedPaths);
+        assignmentManager.submitAssignment(revised);
+
+        Submission reloadedRevision = assignmentManager.getStudentSubmission("S001", assignment.getId());
+        assertEquals(loaded.getId(), reloadedRevision.getId());
+        assertEquals("Revised response.", reloadedRevision.getSubmissionText());
+        assertEquals(1, reloadedRevision.getAttachmentPaths().size());
+        assertEquals(1, countRows("assignment_submission_files"));
+        List<Path> revisedDownload = assignmentManager.downloadSubmissionFiles(reloadedRevision.getId(), tempDir.resolve("revised-downloads").toFile());
+        assertEquals(1, revisedDownload.size());
+        assertTrue(Files.exists(revisedDownload.get(0)));
+
+        assignmentManager.gradeSubmission(reloadedRevision.getId(), 88.0, "Good work.");
         Submission graded = assignmentManager.getStudentSubmission("S001", assignment.getId());
         assertTrue(graded.isGraded());
         assertEquals(88.0, graded.getMarks());
@@ -174,19 +203,70 @@ class LoginFlowTest {
     }
 
     @Test
+    void enrollingStudentAfterAssignmentCreatesVisibilityAndNotification() throws Exception {
+        Student bob = new Student("S002", "Bob", "bob@univ.edu", "999-0002", "CS", 1);
+        studentManager.addStudent(bob);
+
+        assertEquals(0, assignmentManager.getUnreadAssignmentNotificationCount("S002"));
+
+        courseManager.enrollStudent("C101", "S002");
+
+        List<Assignment> visibleAssignments = assignmentManager.getAssignmentsForStudent("S002");
+        assertTrue(visibleAssignments.stream().anyMatch(a -> "A-TST-1".equals(a.getId())));
+        assertEquals(1, assignmentManager.getUnreadAssignmentNotificationCount("S002"));
+        assertTrue(assignmentManager.getUnreadAssignmentNotifications("S002").get(0).getMessage().contains("Stack Implementation"));
+    }
+
+    @Test
     void lateSubmissionsAreMarkedAutomatically() throws Exception {
         Assignment assignment = new Assignment("A-TST-LATE", "C101", "Late Upload Check",
                 "Submit after the deadline.", new Date(System.currentTimeMillis() - 60_000L), 100);
         assignmentManager.createAssignment(assignment);
 
-        File pdf = tempDir.resolve("late-submission.pdf").toFile();
-        Files.writeString(pdf.toPath(), "%PDF-1.4\nLate submission\n%%EOF\n");
-        String savedPath = MediaManager.saveSubmissionFile(pdf, "submissions/" + assignment.getId() + "/S001");
-
-        Submission submission = new Submission("SUB-TST-LATE", assignment.getId(), "S001", savedPath);
+        Submission submission = new Submission("SUB-TST-LATE", assignment.getId(), "S001", null);
+        submission.setSubmissionText("Late text response.");
         assignmentManager.submitAssignment(submission);
 
         Submission loaded = assignmentManager.getStudentSubmission("S001", assignment.getId());
+        assertNotNull(loaded);
+        assertEquals("Late", loaded.getStatus());
+    }
+
+    @Test
+    void legacyMillisecondDeadlinesStillRefreshLateSubmissionStatus() throws Exception {
+        long deadline = System.currentTimeMillis() - 120_000L;
+        long submittedAt = System.currentTimeMillis() - 60_000L;
+
+        try (Connection conn = DatabaseManager.getConnection()) {
+            try (PreparedStatement assignment = conn.prepareStatement(
+                    "INSERT INTO assignments (id, assignment_id, course_id, title, description, deadline, max_marks, status) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                assignment.setString(1, "A-TST-LEGACY-LATE");
+                assignment.setString(2, "A-TST-LEGACY-LATE");
+                assignment.setString(3, "C101");
+                assignment.setString(4, "Legacy Late Assignment");
+                assignment.setString(5, "Legacy millisecond deadline.");
+                assignment.setLong(6, deadline);
+                assignment.setDouble(7, 100);
+                assignment.setString(8, "Published");
+                assignment.executeUpdate();
+            }
+            try (PreparedStatement submission = conn.prepareStatement(
+                    "INSERT INTO submissions (id, submission_id, assignment_id, student_id, submission_text, submitted_at, submission_date, status, is_graded) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)")) {
+                submission.setString(1, "SUB-TST-LEGACY-LATE");
+                submission.setString(2, "SUB-TST-LEGACY-LATE");
+                submission.setString(3, "A-TST-LEGACY-LATE");
+                submission.setString(4, "S001");
+                submission.setString(5, "Submitted after a legacy deadline.");
+                submission.setLong(6, submittedAt);
+                submission.setLong(7, submittedAt);
+                submission.setString(8, "Submitted");
+                submission.executeUpdate();
+            }
+        }
+
+        Submission loaded = assignmentManager.getStudentSubmission("S001", "A-TST-LEGACY-LATE");
         assertNotNull(loaded);
         assertEquals("Late", loaded.getStatus());
     }

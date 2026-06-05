@@ -16,6 +16,7 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,18 +30,23 @@ public class FacultyLMSPanel extends JPanel {
     private CourseManager courseManager = new CourseManager();
     private JTable assignmentTable;
     private DefaultTableModel tableModel;
+    private JPanel metricsPanel;
     private String facultyId;
     private boolean adminMode;
 
     public FacultyLMSPanel() {
         facultyId = resolveFacultyId();
         adminMode = isAdminUser();
-        setLayout(new MigLayout("ins 30, wrap 1, fillx", "[grow]", "[]20[grow]20[]"));
+        setLayout(new MigLayout("ins 30, wrap 1, fillx", "[grow]", "[]16[]16[grow]20[]"));
         ThemeManager.stylePage(this);
 
         JLabel title = new JLabel("Academic Assignment & Grading Portal");
         title.setFont(new Font("Inter", Font.BOLD, 24));
         add(title);
+
+        metricsPanel = new JPanel(new MigLayout("ins 0, gap 14", "[grow,fill][grow,fill][grow,fill][grow,fill]", "[]"));
+        metricsPanel.setOpaque(false);
+        add(metricsPanel, "growx");
 
         String[] cols = {"ID", "Course", "Title", "Due Date", "Due Time", "Status", "Max Marks"};
         tableModel = new DefaultTableModel(cols, 0) {
@@ -71,6 +77,7 @@ public class FacultyLMSPanel extends JPanel {
     }
 
     private void refreshAssignments() {
+        refreshMetrics();
         tableModel.setRowCount(0);
         List<Course> courses = getManagedCourses();
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
@@ -81,6 +88,31 @@ public class FacultyLMSPanel extends JPanel {
                 tableModel.addRow(new Object[]{a.getId(), c.getCourseName(), a.getTitle(), dueDate, a.getDueTime(), a.getStatus(), a.getMaxMarks()});
             }
         }
+    }
+
+    private void refreshMetrics() {
+        if (metricsPanel == null) return;
+        metricsPanel.removeAll();
+        AssignmentManager.FacultyAssignmentMetrics metrics = assignmentManager.getFacultyAssignmentMetrics(facultyId, adminMode);
+        metricsPanel.add(createMetricCard("Total Assignments", metrics.getTotalAssignments()));
+        metricsPanel.add(createMetricCard("Pending Reviews", metrics.getPendingReviews()));
+        metricsPanel.add(createMetricCard("Late Submissions", metrics.getLateSubmissions()));
+        metricsPanel.add(createMetricCard("Recent Submissions", metrics.getRecentSubmissions()));
+        metricsPanel.revalidate();
+        metricsPanel.repaint();
+    }
+
+    private JPanel createMetricCard(String label, int value) {
+        JPanel card = ThemeManager.createGlassCard();
+        card.setLayout(new MigLayout("ins 14, wrap 1", "[grow]", "[]2[]"));
+        JLabel valueLabel = new JLabel(String.valueOf(value));
+        valueLabel.setFont(new Font("Inter", Font.BOLD, 22));
+        valueLabel.setForeground(ThemeManager.ACCENT_BLUE);
+        JLabel labelText = new JLabel(label);
+        labelText.setForeground(ThemeManager.textSecondary());
+        card.add(valueLabel);
+        card.add(labelText);
+        return card;
     }
 
     private void showCreateDialog() {
@@ -158,7 +190,7 @@ public class FacultyLMSPanel extends JPanel {
             return;
         }
 
-        String[] cols = {"Student ID", "File Path", "Submitted At", "Status", "Grade", "Feedback"};
+        String[] cols = {"Student ID", "Text Response", "Files", "Submitted At", "Status", "Grade", "Feedback"};
         DefaultTableModel subModel = new DefaultTableModel(cols, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -170,7 +202,8 @@ public class FacultyLMSPanel extends JPanel {
             String submittedAt = s.getSubmissionDate() == null ? "-" : dateTimeFormat.format(s.getSubmissionDate());
             subModel.addRow(new Object[]{
                     s.getStudentId(),
-                    s.getFilePath() == null ? "-" : s.getFilePath(),
+                    summarizeText(s.getSubmissionText()),
+                    s.hasAttachments() ? s.getAttachmentPaths().size() + " file(s)" : "-",
                     submittedAt,
                     s.isGraded() ? "Graded" : s.getStatus(),
                     s.isGraded() ? s.getMarks() : "-",
@@ -180,7 +213,7 @@ public class FacultyLMSPanel extends JPanel {
 
         JTable subTable = new JTable(subModel);
         subTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        JButton downloadBtn = new JButton("Download File");
+        JButton downloadBtn = new JButton("Download Files");
         downloadBtn.addActionListener(e -> {
             int subRow = subTable.getSelectedRow();
             if (subRow == -1) {
@@ -188,7 +221,7 @@ public class FacultyLMSPanel extends JPanel {
                 return;
             }
             Submission selectedSub = subs.get(subRow);
-            if (selectedSub.getId() == null || selectedSub.getFilePath() == null) {
+            if (selectedSub.getId() == null || !selectedSub.hasAttachments()) {
                 JOptionPane.showMessageDialog(this, "This student has not submitted a file yet.");
                 return;
             }
@@ -198,8 +231,8 @@ public class FacultyLMSPanel extends JPanel {
             chooser.setDialogTitle("Choose Download Folder");
             if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try {
-                    Path downloaded = assignmentManager.downloadSubmission(selectedSub.getId(), chooser.getSelectedFile());
-                    JOptionPane.showMessageDialog(this, "Downloaded to: " + downloaded);
+                    List<Path> downloaded = assignmentManager.downloadSubmissionFiles(selectedSub.getId(), chooser.getSelectedFile());
+                    JOptionPane.showMessageDialog(this, "Downloaded " + downloaded.size() + " file(s) to: " + chooser.getSelectedFile());
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(this, "Download Error: " + ex.getMessage());
                 }
@@ -215,8 +248,8 @@ public class FacultyLMSPanel extends JPanel {
             }
 
             Submission selectedSub = subs.get(subRow);
-            if (selectedSub.getId() == null || selectedSub.getFilePath() == null) {
-                JOptionPane.showMessageDialog(this, "This student has not submitted a file yet.");
+            if (selectedSub.getId() == null) {
+                JOptionPane.showMessageDialog(this, "This student has not submitted yet.");
                 return;
             }
 
@@ -236,9 +269,10 @@ public class FacultyLMSPanel extends JPanel {
                 selectedSub.setFeedback(feedback);
                 selectedSub.setGraded(true);
                 selectedSub.setStatus("Graded");
-                subModel.setValueAt("Graded", subRow, 3);
-                subModel.setValueAt(marks, subRow, 4);
-                subModel.setValueAt(feedback, subRow, 5);
+                subModel.setValueAt("Graded", subRow, 4);
+                subModel.setValueAt(marks, subRow, 5);
+                subModel.setValueAt(feedback, subRow, 6);
+                refreshMetrics();
                 JOptionPane.showMessageDialog(this, "Grade recorded.");
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Grade Error: " + ex.getMessage());
@@ -253,6 +287,12 @@ public class FacultyLMSPanel extends JPanel {
         panel.add(actionPanel, BorderLayout.SOUTH);
 
         JOptionPane.showMessageDialog(this, panel, "Student Submissions", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    private String summarizeText(String text) {
+        if (text == null || text.isBlank()) return "-";
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        return normalized.length() <= 70 ? normalized : normalized.substring(0, 67) + "...";
     }
 
     private List<Course> getManagedCourses() {

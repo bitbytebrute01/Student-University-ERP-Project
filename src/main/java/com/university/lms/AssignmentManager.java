@@ -4,7 +4,9 @@ import com.university.db.DatabaseManager;
 import com.university.erp.security.SessionManager;
 import com.university.erp.security.User;
 import com.university.models.Assignment;
+import com.university.models.AssignmentNotification;
 import com.university.models.Submission;
+import com.university.utils.MediaManager;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,6 +25,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -36,8 +39,28 @@ public class AssignmentManager {
     private static final String STATUS_PENDING = "Pending";
     private static final String STATUS_OVERDUE = "Overdue";
     private static final DateTimeFormatter DUE_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter SQL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public AssignmentManager() {}
+
+    public static class FacultyAssignmentMetrics {
+        private final int totalAssignments;
+        private final int pendingReviews;
+        private final int lateSubmissions;
+        private final int recentSubmissions;
+
+        public FacultyAssignmentMetrics(int totalAssignments, int pendingReviews, int lateSubmissions, int recentSubmissions) {
+            this.totalAssignments = totalAssignments;
+            this.pendingReviews = pendingReviews;
+            this.lateSubmissions = lateSubmissions;
+            this.recentSubmissions = recentSubmissions;
+        }
+
+        public int getTotalAssignments() { return totalAssignments; }
+        public int getPendingReviews() { return pendingReviews; }
+        public int getLateSubmissions() { return lateSubmissions; }
+        public int getRecentSubmissions() { return recentSubmissions; }
+    }
 
     public void createAssignment(Assignment assignment) {
         validateAssignment(assignment);
@@ -69,27 +92,43 @@ public class AssignmentManager {
                 "materials = excluded.materials";
 
         try (Connection conn = DatabaseManager.getConnection()) {
-            if (!courseExists(conn, assignment.getCourseId())) {
-                throw new IllegalStateException("Course not found: " + assignment.getCourseId());
-            }
+            conn.setAutoCommit(false);
+            try {
+                if (!courseExists(conn, assignment.getCourseId())) {
+                    throw new IllegalStateException("Course not found: " + assignment.getCourseId());
+                }
 
-            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, assignmentId);
-                pstmt.setString(2, assignmentId);
-                pstmt.setString(3, assignment.getCourseId());
-                pstmt.setString(4, createdBy);
-                pstmt.setString(5, assignment.getTitle().trim());
-                pstmt.setString(6, assignment.getDescription());
-                pstmt.setTimestamp(7, new Timestamp(deadline.getTime()));
-                pstmt.setString(8, formatDueDate(deadline));
-                pstmt.setString(9, dueTime);
-                pstmt.setTimestamp(10, new Timestamp(createdAt.getTime()));
-                pstmt.setString(11, status);
-                pstmt.setDouble(12, assignment.getMaxMarks());
-                pstmt.setString(13, assignment.getAttachmentPath());
-                pstmt.setString(14, assignment.getAssignmentType());
-                pstmt.setString(15, assignment.getAdditionalMaterialPath());
-                pstmt.executeUpdate();
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, assignmentId);
+                    pstmt.setString(2, assignmentId);
+                    pstmt.setString(3, assignment.getCourseId());
+                    pstmt.setString(4, createdBy);
+                    pstmt.setString(5, assignment.getTitle().trim());
+                    pstmt.setString(6, assignment.getDescription());
+                    pstmt.setString(7, formatSqlDateTime(deadline));
+                    pstmt.setString(8, formatDueDate(deadline));
+                    pstmt.setString(9, dueTime);
+                    pstmt.setString(10, formatSqlDateTime(createdAt));
+                    pstmt.setString(11, status);
+                    pstmt.setDouble(12, assignment.getMaxMarks());
+                    pstmt.setString(13, assignment.getAttachmentPath());
+                    pstmt.setString(14, assignment.getAssignmentType());
+                    pstmt.setString(15, assignment.getAdditionalMaterialPath());
+                    pstmt.executeUpdate();
+                }
+
+                createNotificationsForAssignment(conn, assignmentId, assignment.getCourseId(),
+                        assignment.getTitle().trim(), deadline);
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+                if (e instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                if (e instanceof SQLException sqlException) {
+                    throw sqlException;
+                }
+                throw new IllegalStateException("Error creating assignment: " + e.getMessage(), e);
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Error creating assignment: " + e.getMessage(), e);
@@ -106,23 +145,26 @@ public class AssignmentManager {
             throw new IllegalArgumentException("Submission is required.");
         }
         validateSubmissionAllowed(submission.getStudentId(), submission.getAssignmentId());
-        validateStoredSubmissionFile(submission.getFilePath());
+        String submissionText = normalizeSubmissionText(submission.getSubmissionText());
+        List<String> attachmentPaths = normalizeAttachmentPaths(submission);
+        validateSubmissionContent(submissionText, attachmentPaths);
 
         Assignment assignment = getAssignmentById(submission.getAssignmentId());
         if (assignment == null) {
             throw new IllegalStateException("Assignment not found: " + submission.getAssignmentId());
         }
 
-        String submissionId = isBlank(submission.getId()) ? "SUB-" + UUID.randomUUID() : submission.getId().trim();
         Date submittedAt = submission.getSubmissionDate() == null ? new Date() : submission.getSubmissionDate();
         String status = determineSubmissionStatus(assignment, submittedAt);
+        String submittedAtSql = formatSqlDateTime(submittedAt);
 
         String sql = "INSERT INTO submissions (" +
-                "id, submission_id, assignment_id, student_id, file_path, submission_date, submitted_at, status, marks, feedback, is_graded) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0) " +
+                "id, submission_id, assignment_id, student_id, submission_text, file_path, submission_date, submitted_at, status, marks, feedback, is_graded) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0) " +
                 "ON CONFLICT(assignment_id, student_id) DO UPDATE SET " +
                 "id = excluded.id, " +
                 "submission_id = excluded.submission_id, " +
+                "submission_text = excluded.submission_text, " +
                 "file_path = excluded.file_path, " +
                 "submission_date = excluded.submission_date, " +
                 "submitted_at = excluded.submitted_at, " +
@@ -130,24 +172,76 @@ public class AssignmentManager {
                 "marks = NULL, " +
                 "feedback = NULL, " +
                 "is_graded = 0";
-        try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            Timestamp submittedTimestamp = new Timestamp(submittedAt.getTime());
-            pstmt.setString(1, submissionId);
-            pstmt.setString(2, submissionId);
-            pstmt.setString(3, submission.getAssignmentId());
-            pstmt.setString(4, submission.getStudentId());
-            pstmt.setString(5, submission.getFilePath());
-            pstmt.setTimestamp(6, submittedTimestamp);
-            pstmt.setTimestamp(7, submittedTimestamp);
-            pstmt.setString(8, status);
-            pstmt.executeUpdate();
-            upsertAssignmentSubmissionRecord(conn, submissionId, submission.getAssignmentId(),
-                    submission.getStudentId(), submission.getFilePath(), submittedTimestamp, status);
+        boolean committed = false;
+        List<String> finalizedPaths = new ArrayList<>();
+        try (Connection conn = DatabaseManager.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                String submissionId = resolveSubmissionId(conn, submission);
+
+                // Finalize any temp uploads to permanent location before inserting records
+                for (String p : attachmentPaths) {
+                    if (MediaManager.isTempPath(p)) {
+                        try {
+                            String finalPath = MediaManager.finalizeUpload(p, "assignments/" + submission.getAssignmentId() + "/submissions/" + submissionId);
+                            finalizedPaths.add(finalPath);
+                        } catch (IOException io) {
+                            throw new IllegalStateException("Failed to finalize uploaded file: " + p + " -> " + io.getMessage(), io);
+                        }
+                    } else {
+                        finalizedPaths.add(p);
+                    }
+                }
+
+                String encodedFilePaths = encodeFilePaths(finalizedPaths);
+
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, submissionId);
+                    pstmt.setString(2, submissionId);
+                    pstmt.setString(3, submission.getAssignmentId());
+                    pstmt.setString(4, submission.getStudentId());
+                    pstmt.setString(5, submissionText);
+                    pstmt.setString(6, encodedFilePaths);
+                    pstmt.setString(7, submittedAtSql);
+                    pstmt.setString(8, submittedAtSql);
+                    pstmt.setString(9, status);
+                    pstmt.executeUpdate();
+                }
+                upsertAssignmentSubmissionRecord(conn, submissionId, submission.getAssignmentId(),
+                        submission.getStudentId(), submissionText, encodedFilePaths, submittedAtSql, status);
+                replaceSubmissionFiles(conn, submissionId, finalizedPaths);
+                markAssignmentNotificationRead(conn, submission.getStudentId(), submission.getAssignmentId());
+                conn.commit();
+                committed = true;
+            } catch (Exception e) {
+                conn.rollback();
+                if (e instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                if (e instanceof SQLException sqlException) {
+                    throw sqlException;
+                }
+                throw new IllegalStateException("Error submitting assignment: " + e.getMessage(), e);
+            }
         } catch (SQLException e) {
+            // If DB write failed, attempt to remove any attachment files saved earlier to avoid orphans
+            try {
+                if (!committed && finalizedPaths != null) {
+                    for (String p : finalizedPaths) {
+                        try {
+                            java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(p));
+                        } catch (Exception ex) {
+                            // log and continue
+                            System.err.println("Failed to cleanup attachment after failed submission: " + p + " -> " + ex.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
             throw new IllegalStateException("Error submitting assignment: " + e.getMessage(), e);
         }
 
+        submission.setSubmissionText(submissionText);
+        submission.setAttachmentPaths(attachmentPaths);
         submission.setSubmissionDate(submittedAt);
         submission.setStatus(status);
         submission.setGraded(false);
@@ -315,17 +409,18 @@ public class AssignmentManager {
     }
 
     public Path downloadSubmission(String submissionId, File destinationDirectory) {
+        List<Path> downloadedFiles = downloadSubmissionFiles(submissionId, destinationDirectory);
+        return downloadedFiles.get(0);
+    }
+
+    public List<Path> downloadSubmissionFiles(String submissionId, File destinationDirectory) {
         Submission submission = getSubmissionById(submissionId);
         if (submission == null) {
             throw new IllegalStateException("Submission not found: " + submissionId);
         }
-        if (isBlank(submission.getFilePath())) {
+        List<String> attachmentPaths = submission.getAttachmentPaths();
+        if (attachmentPaths.isEmpty()) {
             throw new IllegalStateException("No submitted file is available for this submission.");
-        }
-
-        Path source = Path.of(submission.getFilePath()).normalize();
-        if (!Files.isRegularFile(source)) {
-            throw new IllegalStateException("Submitted file is missing: " + source);
         }
 
         Path destinationDir = destinationDirectory.toPath().toAbsolutePath().normalize();
@@ -334,12 +429,111 @@ public class AssignmentManager {
                 throw new IOException("Download destination must be a directory.");
             }
             Files.createDirectories(destinationDir);
-            Path destination = destinationDir.resolve(source.getFileName()).normalize();
-            Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
-            return destination;
+            List<Path> downloaded = new ArrayList<>();
+            for (String path : attachmentPaths) {
+                Path source = Path.of(path).normalize();
+                if (!Files.isRegularFile(source)) {
+                    throw new IllegalStateException("Submitted file is missing: " + source);
+                }
+                Path destination = destinationDir.resolve(source.getFileName()).normalize();
+                Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
+                downloaded.add(destination);
+            }
+            return downloaded;
         } catch (IOException e) {
             throw new IllegalStateException("Error downloading submission: " + e.getMessage(), e);
         }
+    }
+
+    public List<AssignmentNotification> getUnreadAssignmentNotifications(String studentId) {
+        List<AssignmentNotification> notifications = new ArrayList<>();
+        String sql = "SELECT * FROM assignment_notifications " +
+                "WHERE student_id = ? AND read_at IS NULL " +
+                "ORDER BY " + sqliteDateTimeExpression("created_at") + " DESC";
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, studentId);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                notifications.add(mapResultSetToNotification(rs));
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Error loading assignment notifications: " + e.getMessage(), e);
+        }
+        return notifications;
+    }
+
+    public int getUnreadAssignmentNotificationCount(String studentId) {
+        String sql = "SELECT COUNT(*) FROM assignment_notifications WHERE student_id = ? AND read_at IS NULL";
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, studentId);
+            ResultSet rs = pstmt.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Error counting assignment notifications: " + e.getMessage(), e);
+        }
+    }
+
+    public void markAssignmentNotificationRead(String studentId, String assignmentId) {
+        try (Connection conn = DatabaseManager.getConnection()) {
+            markAssignmentNotificationRead(conn, studentId, assignmentId);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Error updating assignment notification: " + e.getMessage(), e);
+        }
+    }
+
+    public void createNotificationsForStudentCourse(String studentId, String courseId) {
+        String sql = "SELECT id, course_id, title, deadline FROM assignments " +
+                "WHERE course_id = ? AND COALESCE(status, ?) = ?";
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, courseId);
+            pstmt.setString(2, STATUS_PUBLISHED);
+            pstmt.setString(3, STATUS_PUBLISHED);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                insertAssignmentNotification(conn,
+                        studentId,
+                        rs.getString("id"),
+                        rs.getString("course_id"),
+                        rs.getString("title"),
+                        getOptionalTimestampAsDate(rs, "deadline"));
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Error creating assignment notifications for enrollment: " + e.getMessage(), e);
+        }
+    }
+
+    public void createNotificationsForStudentCourse(Connection conn, String studentId, String courseId) throws SQLException {
+        String sql = "SELECT id, course_id, title, deadline FROM assignments " +
+                "WHERE course_id = ? AND COALESCE(status, ?) = ?";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, courseId);
+            pstmt.setString(2, STATUS_PUBLISHED);
+            pstmt.setString(3, STATUS_PUBLISHED);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                insertAssignmentNotification(conn,
+                        studentId,
+                        rs.getString("id"),
+                        rs.getString("course_id"),
+                        rs.getString("title"),
+                        getOptionalTimestampAsDate(rs, "deadline"));
+            }
+        }
+    }
+
+    public FacultyAssignmentMetrics getFacultyAssignmentMetrics(String facultyId, boolean adminMode) {
+        return new FacultyAssignmentMetrics(
+                countFacultyAssignments(facultyId, adminMode),
+                countFacultySubmissions(facultyId, adminMode,
+                        "(s.file_path IS NOT NULL OR s.submission_text IS NOT NULL) AND COALESCE(s.is_graded, 0) = 0"),
+                countFacultySubmissions(facultyId, adminMode,
+                        "s.status = '" + STATUS_LATE + "'"),
+                countFacultySubmissions(facultyId, adminMode,
+                        sqliteDateTimeExpression("COALESCE(s.submitted_at, s.submission_date)") + " >= datetime('now', '-7 days')")
+        );
     }
 
     public String getStudentAssignmentStatus(String studentId, Assignment assignment) {
@@ -360,19 +554,19 @@ public class AssignmentManager {
 
         Duration remaining = Duration.between(new Date().toInstant(), assignment.getDeadline().toInstant());
         if (remaining.isNegative() || remaining.isZero()) {
-            return "Closed";
+            return STATUS_OVERDUE;
         }
 
         long days = remaining.toDays();
         long hours = remaining.minusDays(days).toHours();
         long minutes = remaining.minusDays(days).minusHours(hours).toMinutes();
         if (days > 0) {
-            return days + "d " + hours + "h";
+            return "Due in " + days + (days == 1 ? " day" : " days");
         }
         if (hours > 0) {
-            return hours + "h " + minutes + "m";
+            return "Due in " + hours + (hours == 1 ? " hour" : " hours");
         }
-        return Math.max(1, minutes) + "m";
+        return "Due in " + Math.max(1, minutes) + " minutes";
     }
 
     public boolean isDeadlinePassed(Assignment assignment) {
@@ -429,13 +623,19 @@ public class AssignmentManager {
         }
     }
 
-    private void validateStoredSubmissionFile(String filePath) {
-        if (isBlank(filePath)) {
-            throw new IllegalArgumentException("Submission file is required.");
+    private void validateSubmissionContent(String submissionText, List<String> attachmentPaths) {
+        if (isBlank(submissionText) && attachmentPaths.isEmpty()) {
+            throw new IllegalArgumentException("Submission text or at least one attachment is required.");
         }
-        Path path = Path.of(filePath).normalize();
-        if (!Files.isRegularFile(path)) {
-            throw new IllegalArgumentException("Submission file was not saved correctly: " + path);
+        for (String filePath : attachmentPaths) {
+            Path path = Path.of(filePath).normalize();
+            if (!Files.isRegularFile(path)) {
+                throw new IllegalArgumentException("Submission file was not saved correctly: " + path);
+            }
+            String extension = fileExtension(path.getFileName().toString());
+            if (!"pdf".equals(extension) && !"docx".equals(extension) && !"zip".equals(extension)) {
+                throw new IllegalArgumentException("Unsupported submission file format: " + extension);
+            }
         }
     }
 
@@ -446,9 +646,9 @@ public class AssignmentManager {
         String sql = "UPDATE submissions SET status = ? " +
                 "WHERE assignment_id = ? " +
                 "AND is_graded = 0 " +
-                "AND file_path IS NOT NULL " +
-                "AND datetime(COALESCE(submitted_at, submission_date)) > " +
-                "(SELECT datetime(deadline) FROM assignments WHERE id = ? OR assignment_id = ?)";
+                "AND (file_path IS NOT NULL OR submission_text IS NOT NULL) " +
+                "AND " + sqliteDateTimeExpression("COALESCE(submitted_at, submission_date)") + " > " +
+                "(SELECT " + sqliteDateTimeExpression("deadline") + " FROM assignments WHERE id = ? OR assignment_id = ?)";
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, STATUS_LATE);
@@ -463,13 +663,14 @@ public class AssignmentManager {
     }
 
     private void upsertAssignmentSubmissionRecord(Connection conn, String submissionId, String assignmentId,
-                                                  String studentId, String filePath, Timestamp submittedAt,
-                                                  String status) throws SQLException {
+                                                  String studentId, String submissionText, String filePath,
+                                                  String submittedAt, String status) throws SQLException {
         String sql = "INSERT INTO assignment_submissions " +
-                "(submission_id, assignment_id, student_id, file_path, submitted_at, status, marks, feedback, is_graded) " +
-                "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0) " +
+                "(submission_id, assignment_id, student_id, submission_text, file_path, submitted_at, status, marks, feedback, is_graded) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0) " +
                 "ON CONFLICT(assignment_id, student_id) DO UPDATE SET " +
                 "submission_id = excluded.submission_id, " +
+                "submission_text = excluded.submission_text, " +
                 "file_path = excluded.file_path, " +
                 "submitted_at = excluded.submitted_at, " +
                 "status = excluded.status, " +
@@ -480,10 +681,28 @@ public class AssignmentManager {
             pstmt.setString(1, submissionId);
             pstmt.setString(2, assignmentId);
             pstmt.setString(3, studentId);
-            pstmt.setString(4, filePath);
-            pstmt.setTimestamp(5, submittedAt);
-            pstmt.setString(6, status);
+            pstmt.setString(4, submissionText);
+            pstmt.setString(5, filePath);
+            pstmt.setString(6, submittedAt);
+            pstmt.setString(7, status);
             pstmt.executeUpdate();
+        }
+    }
+
+    private void replaceSubmissionFiles(Connection conn, String submissionId, List<String> attachmentPaths) throws SQLException {
+        try (PreparedStatement delete = conn.prepareStatement("DELETE FROM assignment_submission_files WHERE submission_id = ?")) {
+            delete.setString(1, submissionId);
+            delete.executeUpdate();
+        }
+        String sql = "INSERT INTO assignment_submission_files (id, submission_id, file_path) VALUES (?, ?, ?)";
+        try (PreparedStatement insert = conn.prepareStatement(sql)) {
+            for (String filePath : attachmentPaths) {
+                insert.setString(1, "ASF-" + UUID.randomUUID());
+                insert.setString(2, submissionId);
+                insert.setString(3, filePath);
+                insert.addBatch();
+            }
+            insert.executeBatch();
         }
     }
 
@@ -503,9 +722,9 @@ public class AssignmentManager {
         String sql = "UPDATE assignment_submissions SET status = ? " +
                 "WHERE assignment_id = ? " +
                 "AND is_graded = 0 " +
-                "AND file_path IS NOT NULL " +
-                "AND datetime(submitted_at) > " +
-                "(SELECT datetime(deadline) FROM assignments WHERE id = ? OR assignment_id = ?)";
+                "AND (file_path IS NOT NULL OR submission_text IS NOT NULL) " +
+                "AND " + sqliteDateTimeExpression("submitted_at") + " > " +
+                "(SELECT " + sqliteDateTimeExpression("deadline") + " FROM assignments WHERE id = ? OR assignment_id = ?)";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, STATUS_LATE);
             pstmt.setString(2, assignmentId);
@@ -520,6 +739,89 @@ public class AssignmentManager {
             pstmt.setString(1, courseId);
             ResultSet rs = pstmt.executeQuery();
             return rs.next();
+        }
+    }
+
+    private void createNotificationsForAssignment(Connection conn, String assignmentId, String courseId,
+                                                  String title, Date deadline) throws SQLException {
+        String sql = "SELECT student_id FROM enrollments WHERE course_id = ?";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, courseId);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                insertAssignmentNotification(conn, rs.getString("student_id"), assignmentId, courseId, title, deadline);
+            }
+        }
+    }
+
+    private void insertAssignmentNotification(Connection conn, String studentId, String assignmentId,
+                                              String courseId, String title, Date deadline) throws SQLException {
+        String courseName = courseName(conn, courseId);
+        String deadlineText = deadline == null
+                ? "No deadline"
+                : DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                        .format(LocalDateTime.ofInstant(deadline.toInstant(), ZoneId.systemDefault()));
+        String message = "New Assignment Assigned: " + title + " | Course: " + courseName + " | Deadline: " + deadlineText;
+        String sql = "INSERT OR IGNORE INTO assignment_notifications " +
+                "(id, student_id, assignment_id, course_id, title, message) VALUES (?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, "N-" + UUID.randomUUID());
+            pstmt.setString(2, studentId);
+            pstmt.setString(3, assignmentId);
+            pstmt.setString(4, courseId);
+            pstmt.setString(5, title);
+            pstmt.setString(6, message);
+            pstmt.executeUpdate();
+        }
+    }
+
+    private void markAssignmentNotificationRead(Connection conn, String studentId, String assignmentId) throws SQLException {
+        String sql = "UPDATE assignment_notifications SET read_at = CURRENT_TIMESTAMP " +
+                "WHERE student_id = ? AND assignment_id = ? AND read_at IS NULL";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, studentId);
+            pstmt.setString(2, assignmentId);
+            pstmt.executeUpdate();
+        }
+    }
+
+    private String courseName(Connection conn, String courseId) throws SQLException {
+        try (PreparedStatement pstmt = conn.prepareStatement("SELECT course_name FROM courses WHERE course_id = ?")) {
+            pstmt.setString(1, courseId);
+            ResultSet rs = pstmt.executeQuery();
+            return rs.next() ? rs.getString("course_name") : courseId;
+        }
+    }
+
+    private int countFacultyAssignments(String facultyId, boolean adminMode) {
+        String sql = "SELECT COUNT(*) FROM assignments a JOIN courses c ON c.course_id = a.course_id " +
+                (adminMode ? "" : "WHERE c.faculty_id = ?");
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            if (!adminMode) {
+                pstmt.setString(1, facultyId);
+            }
+            ResultSet rs = pstmt.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Error counting assignments: " + e.getMessage(), e);
+        }
+    }
+
+    private int countFacultySubmissions(String facultyId, boolean adminMode, String condition) {
+        String sql = "SELECT COUNT(*) FROM submissions s " +
+                "JOIN assignments a ON a.id = s.assignment_id " +
+                "JOIN courses c ON c.course_id = a.course_id " +
+                "WHERE " + condition + (adminMode ? "" : " AND c.faculty_id = ?");
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            if (!adminMode) {
+                pstmt.setString(1, facultyId);
+            }
+            ResultSet rs = pstmt.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Error counting submissions: " + e.getMessage(), e);
         }
     }
 
@@ -550,6 +852,57 @@ public class AssignmentManager {
     private String formatDueDate(Date deadline) {
         LocalDateTime dateTime = LocalDateTime.ofInstant(deadline.toInstant(), ZoneId.systemDefault());
         return dateTime.toLocalDate().toString();
+    }
+
+    private String formatSqlDateTime(Date date) {
+        return SQL_DATE_TIME_FORMATTER.format(LocalDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault()));
+    }
+
+    private String resolveSubmissionId(Connection conn, Submission submission) throws SQLException {
+        String existingId = findExistingSubmissionId(conn, submission.getAssignmentId(), submission.getStudentId());
+        if (!isBlank(existingId)) {
+            return existingId;
+        }
+        return isBlank(submission.getId()) ? "SUB-" + UUID.randomUUID() : submission.getId().trim();
+    }
+
+    private String findExistingSubmissionId(Connection conn, String assignmentId, String studentId) throws SQLException {
+        String sql = "SELECT id FROM submissions WHERE assignment_id = ? AND student_id = ?";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, assignmentId);
+            pstmt.setString(2, studentId);
+            ResultSet rs = pstmt.executeQuery();
+            return rs.next() ? rs.getString("id") : null;
+        }
+    }
+
+    private String normalizeSubmissionText(String submissionText) {
+        return isBlank(submissionText) ? null : submissionText.trim();
+    }
+
+    private List<String> normalizeAttachmentPaths(Submission submission) {
+        List<String> paths = submission.getAttachmentPaths();
+        if (paths.isEmpty() && !isBlank(submission.getFilePath())) {
+            paths.add(submission.getFilePath().trim());
+        }
+        List<String> normalized = new ArrayList<>();
+        for (String path : paths) {
+            if (!isBlank(path)) {
+                normalized.add(path.trim());
+            }
+        }
+        return normalized;
+    }
+
+    private String encodeFilePaths(List<String> attachmentPaths) {
+        return attachmentPaths == null || attachmentPaths.isEmpty()
+                ? null
+                : String.join(Submission.FILE_PATH_SEPARATOR, attachmentPaths);
+    }
+
+    private String fileExtension(String fileName) {
+        int dot = fileName == null ? -1 : fileName.lastIndexOf('.');
+        return dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase();
     }
 
     private Assignment mapResultSetToAssignment(ResultSet rs) throws SQLException {
@@ -594,11 +947,25 @@ public class AssignmentManager {
                 getOptionalTimestampAsDate(rs, "submitted_at"),
                 getOptionalTimestampAsDate(rs, "submission_date")
         ));
+        submission.setSubmissionText(getOptionalString(rs, "submission_text"));
         submission.setMarks(getOptionalDouble(rs, "marks"));
         submission.setFeedback(getOptionalString(rs, "feedback"));
         submission.setGraded(getOptionalBoolean(rs, "is_graded"));
         submission.setStatus(defaultText(getOptionalString(rs, "status"), submission.isGraded() ? STATUS_GRADED : STATUS_SUBMITTED));
         return submission;
+    }
+
+    private AssignmentNotification mapResultSetToNotification(ResultSet rs) throws SQLException {
+        return new AssignmentNotification(
+                getOptionalString(rs, "id"),
+                getOptionalString(rs, "student_id"),
+                getOptionalString(rs, "assignment_id"),
+                getOptionalString(rs, "course_id"),
+                getOptionalString(rs, "title"),
+                getOptionalString(rs, "message"),
+                getOptionalTimestampAsDate(rs, "created_at"),
+                getOptionalTimestampAsDate(rs, "read_at")
+        );
     }
 
     private Date combineDueDateAndTime(LocalDate localDate, String dueTime) {
@@ -633,8 +1000,37 @@ public class AssignmentManager {
         if (!hasColumn(rs, column)) {
             return null;
         }
-        Timestamp timestamp = rs.getTimestamp(column);
-        return timestamp == null ? null : new Date(timestamp.getTime());
+        Object raw = rs.getObject(column);
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number number) {
+            return new Date(number.longValue());
+        }
+
+        String value = raw.toString();
+        if (isBlank(value)) {
+            return null;
+        }
+
+        try {
+            return new Date(Long.parseLong(value.trim()));
+        } catch (NumberFormatException ignored) {
+            // Not a legacy epoch-millis value.
+        }
+
+        try {
+            return Date.from(Timestamp.valueOf(value.trim()).toInstant());
+        } catch (IllegalArgumentException ignored) {
+            // Not a JDBC timestamp string.
+        }
+
+        try {
+            LocalDate localDate = LocalDate.parse(value.length() >= 10 ? value.substring(0, 10) : value);
+            return Date.from(localDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        } catch (DateTimeParseException parseError) {
+            throw new SQLException("Error parsing timestamp: " + value, parseError);
+        }
     }
 
     private LocalDate getOptionalLocalDate(ResultSet rs, String column) throws SQLException {
@@ -673,6 +1069,15 @@ public class AssignmentManager {
 
     private String defaultText(String value, String defaultValue) {
         return isBlank(value) ? defaultValue : value;
+    }
+
+    private String sqliteDateTimeExpression(String expression) {
+        String textExpression = "TRIM(CAST(" + expression + " AS TEXT))";
+        return "CASE " +
+                "WHEN " + expression + " IS NULL THEN NULL " +
+                "WHEN typeof(" + expression + ") IN ('integer','real') THEN datetime(" + expression + " / 1000, 'unixepoch') " +
+                "WHEN " + textExpression + " <> '' AND " + textExpression + " NOT GLOB '*[^0-9]*' THEN datetime(CAST(" + expression + " AS INTEGER) / 1000, 'unixepoch') " +
+                "ELSE datetime(" + expression + ") END";
     }
 
     private boolean isBlank(String value) {

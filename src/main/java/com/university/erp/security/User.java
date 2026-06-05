@@ -52,5 +52,13 @@ public abstract class User implements Authenticatable, Serializable {
         return authenticated;
     }
 
+    /**
+     * Mark this user as authenticated without performing password verification.
+     * Intended for use by AuthenticationManager after verifying credentials.
+     */
+    protected void setAuthenticated(boolean authenticated) {
+        this.authenticated = authenticated;
+    }
+
     public abstract UserRole getRole();
 }

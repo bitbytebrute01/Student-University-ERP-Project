@@ -116,6 +116,9 @@ public class StudentDashboard extends JPanel {
         pending.setFont(new Font("Inter", Font.BOLD, 16));
         pending.setForeground(data.pendingAssignments > 0 ? ThemeManager.WARNING_ORANGE : ThemeManager.SUCCESS_GREEN);
         focus.add(pending);
+        JLabel notifications = new JLabel(data.unreadNotifications + " unread LMS notifications");
+        notifications.setForeground(data.unreadNotifications > 0 ? ThemeManager.WARNING_ORANGE : ThemeManager.textSecondary());
+        focus.add(notifications);
         JLabel courseCount = new JLabel(data.courses.size() + " enrolled courses");
         courseCount.setForeground(ThemeManager.textSecondary());
         focus.add(courseCount);
@@ -132,12 +135,12 @@ public class StudentDashboard extends JPanel {
         ));
         grid.setOpaque(false);
 
-        grid.add(createMetricCard("CGPA", String.format("%.2f", student.getCgpa()), MaterialDesignC.CHART_BAR, ThemeManager.ACCENT_BLUE));
-        grid.add(createMetricCard("Attendance", String.format("%.1f%%", student.getAttendancePercentage()), MaterialDesignC.CLOCK_OUTLINE, ThemeManager.SUCCESS_GREEN));
-        grid.add(createMetricCard("Courses", String.valueOf(data.courses.size()), MaterialDesignB.BOOK_OPEN_PAGE_VARIANT, new Color(116, 90, 242)));
-        grid.add(createMetricCard("Pending", String.valueOf(data.pendingAssignments), MaterialDesignC.CLIPBOARD_CHECK, ThemeManager.WARNING_ORANGE));
-        grid.add(createMetricCard("Projects", String.valueOf(data.projects.size()), MaterialDesignP.PROJECTOR_SCREEN, new Color(33, 150, 136)));
-        grid.add(createMetricCard("Certs", String.valueOf(data.certifications.size()), MaterialDesignC.CERTIFICATE, new Color(142, 68, 173)));
+        grid.add(createMetricCard("Pending Assignments", String.valueOf(data.pendingAssignments), MaterialDesignC.CLIPBOARD_CHECK, ThemeManager.WARNING_ORANGE));
+        grid.add(createMetricCard("Submitted Assignments", String.valueOf(data.submittedAssignments), MaterialDesignC.CHECK_CIRCLE, ThemeManager.ACCENT_BLUE));
+        grid.add(createMetricCard("Overdue Assignments", String.valueOf(data.overdueAssignments), MaterialDesignA.ALERT_CIRCLE, ThemeManager.DANGER_RED));
+        grid.add(createMetricCard("Upcoming Deadlines", String.valueOf(data.upcomingDeadlines), MaterialDesignC.CLOCK_OUTLINE, new Color(116, 90, 242)));
+        grid.add(createMetricCard("Courses", String.valueOf(data.courses.size()), MaterialDesignB.BOOK_OPEN_PAGE_VARIANT, new Color(33, 150, 136)));
+        grid.add(createMetricCard("CGPA", String.format("%.2f", student.getCgpa()), MaterialDesignC.CHART_BAR, new Color(142, 68, 173)));
         return grid;
     }
 
@@ -197,20 +200,24 @@ public class StudentDashboard extends JPanel {
     }
 
     private JPanel createAssignmentsCard(List<AssignmentSummary> assignments) {
-        JPanel card = sectionCard("Assignments", MaterialDesignC.CLIPBOARD_CHECK);
+        JPanel card = sectionCard("My Assignments", MaterialDesignC.CLIPBOARD_CHECK);
         if (assignments.isEmpty()) {
             card.add(emptyLabel("No assignments available for enrolled courses."));
             return card;
         }
 
-        SimpleDateFormat fmt = new SimpleDateFormat("MMM d");
+        SimpleDateFormat dateFmt = new SimpleDateFormat("yyyy-MM-dd");
         for (AssignmentSummary item : assignments) {
-            JPanel row = new JPanel(new MigLayout("fillx, ins 8 0, gap 10", "[grow,fill][right]", "[][]"));
+            JPanel row = new JPanel(new MigLayout("fillx, ins 8 0, gap 10", "[grow,fill][right]", "[][][]"));
             row.setOpaque(false);
             row.add(rowTitle(item.assignment.getTitle()), "growx");
             row.add(statusLabel(item.status, statusColor(item.status)), "wrap");
-            String due = item.assignment.getDeadline() == null ? "No due date" : "Due " + fmt.format(item.assignment.getDeadline());
-            row.add(rowMeta(item.course.getCourseName() + "  |  " + due), "span 2, growx");
+            String courseName = item.course == null ? item.assignment.getCourseId() : item.course.getCourseName();
+            String dueDate = item.assignment.getDeadline() == null ? "No due date" : dateFmt.format(item.assignment.getDeadline());
+            row.add(rowMeta(courseName + "  |  Due Date " + dueDate + "  |  Due Time " +
+                    (item.assignment.getDueTime() == null ? "-" : item.assignment.getDueTime())), "span 2, growx, wrap");
+            row.add(rowMeta(item.assignment.getDescription()), "span 2, growx, wrap");
+            row.add(rowMeta(assignmentManager.getDeadlineCountdown(item.assignment)), "span 2, growx");
             card.add(row, "growx, wrap");
         }
         return card;
@@ -318,20 +325,23 @@ public class StudentDashboard extends JPanel {
     private Color statusColor(String status) {
         if ("Graded".equalsIgnoreCase(status)) return ThemeManager.SUCCESS_GREEN;
         if ("Submitted".equalsIgnoreCase(status)) return ThemeManager.ACCENT_BLUE;
+        if ("Late".equalsIgnoreCase(status) || "Overdue".equalsIgnoreCase(status)) return ThemeManager.DANGER_RED;
         return ThemeManager.WARNING_ORANGE;
     }
 
     private DashboardData loadDashboardData() {
         DashboardData data = new DashboardData();
         data.courses = courseManager.getEnrolledCourses(student.getId());
+        data.unreadNotifications = assignmentManager.getUnreadAssignmentNotificationCount(student.getId());
 
-        for (Course course : data.courses) {
-            for (Assignment assignment : assignmentManager.getAssignmentsByCourse(course.getCourseId())) {
-                Submission submission = assignmentManager.getStudentSubmission(student.getId(), assignment.getId());
-                String status = submission == null ? "Pending" : (submission.isGraded() ? "Graded" : "Submitted");
-                if ("Pending".equals(status)) data.pendingAssignments++;
-                data.assignments.add(new AssignmentSummary(course, assignment, status));
-            }
+        for (Assignment assignment : assignmentManager.getAssignmentsForStudent(student.getId())) {
+            Course course = courseManager.searchById(assignment.getCourseId());
+            String status = assignmentManager.getStudentAssignmentStatus(student.getId(), assignment);
+            if ("Pending".equalsIgnoreCase(status)) data.pendingAssignments++;
+            if ("Submitted".equalsIgnoreCase(status) || "Late".equalsIgnoreCase(status)) data.submittedAssignments++;
+            if ("Overdue".equalsIgnoreCase(status)) data.overdueAssignments++;
+            if (!"Graded".equalsIgnoreCase(status) && !"Overdue".equalsIgnoreCase(status)) data.upcomingDeadlines++;
+            data.assignments.add(new AssignmentSummary(course, assignment, status));
         }
 
         try {
@@ -350,6 +360,10 @@ public class StudentDashboard extends JPanel {
         private List<Project> projects = new ArrayList<>();
         private List<Certification> certifications = new ArrayList<>();
         private int pendingAssignments;
+        private int submittedAssignments;
+        private int overdueAssignments;
+        private int upcomingDeadlines;
+        private int unreadNotifications;
     }
 
     private static class AssignmentSummary {

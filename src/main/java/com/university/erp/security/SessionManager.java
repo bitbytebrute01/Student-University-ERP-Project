@@ -3,22 +3,27 @@ package com.university.erp.security;
 public class SessionManager {
     private static User currentUser;
 
-    public static void startSession(User user) {
+    public static synchronized void startSession(User user) {
+        if (currentUser != null) {
+            System.out.println("Warning: starting a new session while another session is active for: " + currentUser.getUsername());
+        }
         currentUser = user;
     }
 
-    public static User getCurrentUser() {
+    public static synchronized User getCurrentUser() {
         return currentUser;
     }
 
-    public static void endSession() {
+    public static synchronized void endSession() {
         if (currentUser != null) {
-            currentUser.logout();
+            try {
+                currentUser.logout();
+            } catch (Exception ignored) {}
             currentUser = null;
         }
     }
 
-    public static boolean hasActiveSession() {
+    public static synchronized boolean hasActiveSession() {
         return currentUser != null && currentUser.isAuthenticated();
     }
 }

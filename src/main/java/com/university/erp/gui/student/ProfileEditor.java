@@ -10,6 +10,7 @@ import net.miginfocom.swing.MigLayout;
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
+import java.io.IOException;
 import java.util.function.Consumer;
 
 public class ProfileEditor extends JPanel {
@@ -85,9 +86,33 @@ public class ProfileEditor extends JPanel {
                 student.setEmail(emailField.getText());
                 student.setPhone(phoneField.getText());
                 student.setBio(bioArea.getText());
-                studentManager.updateStudent(student);
-                this.onProfileUpdated.accept(student);
-                JOptionPane.showMessageDialog(this, "Profile updated successfully!");
+
+                // If the profile picture is a temp upload, finalize it first
+                String currentPath = student.getProfilePicturePath();
+                String finalizedPath = null;
+                if (currentPath != null && MediaManager.isTempPath(currentPath)) {
+                    try {
+                        // finalize into profile-specific folder
+                        finalizedPath = MediaManager.finalizeUpload(currentPath, "profiles/" + student.getId());
+                        student.setProfilePicturePath(finalizedPath);
+                    } catch (IOException io) {
+                        JOptionPane.showMessageDialog(this, "Failed to finalize profile photo: " + io.getMessage());
+                        return;
+                    }
+                }
+
+                try {
+                    studentManager.updateStudent(student);
+                    this.onProfileUpdated.accept(student);
+                    JOptionPane.showMessageDialog(this, "Profile updated successfully!");
+                } catch (Exception ex) {
+                    // rollback finalized file if DB update failed
+                    if (finalizedPath != null) {
+                        MediaManager.deleteFile(finalizedPath);
+                        student.setProfilePicturePath(null);
+                    }
+                    JOptionPane.showMessageDialog(this, "Update Error: " + ex.getMessage());
+                }
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Update Error: " + ex.getMessage());
             }
@@ -98,12 +123,12 @@ public class ProfileEditor extends JPanel {
             chooser.setFileFilter(new FileNameExtensionFilter("Images (*.png, *.jpg, *.jpeg)", "png", "jpg", "jpeg"));
             if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try {
-                    String path = MediaManager.saveImage(chooser.getSelectedFile(), "profiles");
-                    student.setProfilePicturePath(path);
-                    studentManager.updateStudent(student);
+                    // save to temp; finalize happens on Save
+                    String tempPath = MediaManager.saveTempImage(chooser.getSelectedFile());
+                    student.setProfilePicturePath(tempPath);
                     photoPreview.setIcon(loadProfileIcon(88));
                     this.onProfileUpdated.accept(student);
-                    JOptionPane.showMessageDialog(this, "Profile photo updated successfully.");
+                    JOptionPane.showMessageDialog(this, "Profile photo staged. Click Save to persist.");
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(this, "Upload Error: " + ex.getMessage());
                 }

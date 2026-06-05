@@ -12,7 +12,7 @@ import java.util.Random;
 
 public class AttendanceManager {
     private StudentManager studentManager;
-    private static Map<String, String> activeAttendanceCodes = new HashMap<>(); // courseId -> code
+    private static Map<String, String> activeAttendanceCodes = new HashMap<>(); // courseId -> code (cache)
 
     public AttendanceManager(StudentManager studentManager) {
         this.studentManager = studentManager;
@@ -21,12 +21,43 @@ public class AttendanceManager {
     public String generateAttendanceCode(String courseId) {
         String code = String.format("%06d", new Random().nextInt(999999));
         activeAttendanceCodes.put(courseId, code);
+        // Persist code with expiry (default 2 hours)
+        String id = "AC-" + java.util.UUID.randomUUID();
+        String sql = "INSERT INTO attendance_codes (id, course_id, code, created_by, expires_at, active) VALUES (?, ?, ?, ?, datetime('now','+2 hours'), 1)";
+        try (Connection conn = com.university.db.DatabaseManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, id);
+            pstmt.setString(2, courseId);
+            pstmt.setString(3, code);
+            pstmt.setString(4, "system");
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Error persisting attendance code: " + e.getMessage());
+        }
         return code;
     }
 
     public boolean markAttendanceWithCode(String studentId, String courseId, String code) throws InvalidAttendanceException {
-        String validCode = activeAttendanceCodes.get(courseId);
-        if (validCode != null && validCode.equals(code)) {
+        // Validate against persistent codes table where active=1 and not expired
+        String sql = "SELECT code FROM attendance_codes WHERE course_id = ? AND active = 1 AND (expires_at IS NULL OR datetime(expires_at) >= datetime('now')) ORDER BY created_at DESC LIMIT 1";
+        try (Connection conn = com.university.db.DatabaseManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, courseId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                String validCode = rs.getString(1);
+                if (validCode != null && validCode.equals(code)) {
+                    markAttendance(studentId, courseId, true);
+                    return true;
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error validating attendance code: " + e.getMessage());
+        }
+
+        // Fallback: check in-memory cache
+        String cached = activeAttendanceCodes.get(courseId);
+        if (cached != null && cached.equals(code)) {
             markAttendance(studentId, courseId, true);
             return true;
         }

@@ -5,6 +5,7 @@ import com.university.courses.CourseManager;
 import com.university.erp.security.SessionManager;
 import com.university.erp.security.User;
 import com.university.erp.gui.theme.ThemeManager;
+import com.university.lms.AssignmentManager;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -12,6 +13,7 @@ import java.awt.*;
 
 public class FacultyDashboard extends JPanel {
     private CourseManager courseManager = new CourseManager();
+    private AssignmentManager assignmentManager = new AssignmentManager();
     private String facultyId;
 
     public FacultyDashboard() {
@@ -24,11 +26,13 @@ public class FacultyDashboard extends JPanel {
         add(title, "span 2");
 
         // Metrics
-        JPanel stats = new JPanel(new MigLayout("ins 0, gap 20", "[grow][grow][grow]", "[]"));
+        AssignmentManager.FacultyAssignmentMetrics metrics = assignmentManager.getFacultyAssignmentMetrics(facultyId, false);
+        JPanel stats = new JPanel(new MigLayout("ins 0, gap 20", "[grow][grow][grow][grow]", "[]"));
         stats.setOpaque(false);
-        stats.add(createStatCard("Assigned Courses", courseManager.getCoursesByFaculty(facultyId).size()));
-        stats.add(createStatCard("Active Students", getTotalStudentsEnrolled()));
-        stats.add(createStatCard("Submissions", ExecutiveAnalytics.getCount("submissions")));
+        stats.add(createStatCard("Total Assignments", metrics.getTotalAssignments()));
+        stats.add(createStatCard("Pending Reviews", metrics.getPendingReviews()));
+        stats.add(createStatCard("Late Submissions", metrics.getLateSubmissions()));
+        stats.add(createStatCard("Recent Submissions", metrics.getRecentSubmissions()));
         add(stats, "span 2, growx");
 
         // Info Cards

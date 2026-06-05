@@ -17,6 +17,9 @@ public class AuthenticationManager {
     }
 
     public void registerUser(User user, String plaintextPassword, String refId) {
+        if (plaintextPassword == null || plaintextPassword.isBlank()) {
+            throw new IllegalArgumentException("Password is required to register a user.");
+        }
         String hash = BCrypt.hashpw(plaintextPassword, BCrypt.gensalt());
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(
@@ -33,6 +36,7 @@ public class AuthenticationManager {
             AuditLogger.log("SYSTEM", "User Registered: " + user.getUsername() + " as " + user.getRole().getLabel());
         } catch (SQLException e) {
             System.err.println("Error registering user: " + e.getMessage());
+            throw new IllegalStateException("Unable to register user: " + e.getMessage(), e);
         }
     }
 
@@ -76,15 +80,16 @@ public class AuthenticationManager {
                 
                 if (passwordMatches(password, hash)) {
                     User user = createUser(normalizedUsername, hash, roleStr, refId);
-                    
-                    if (!user.login(normalizedUsername, password)) {
-                        throw new UnauthorizedAccessException("Invalid credentials.");
-                    }
 
+                    // Mark authenticated (avoid duplicate password checks inside User.login)
+                    user.setAuthenticated(true);
+
+                    // For students, ensure a student record exists and is loadable
                     if (user.getRole() == UserRole.STUDENT) {
                         StudentContext.requireStudentForUser(user, new StudentManager());
                     }
 
+                    // If stored password was not BCrypt, upgrade it in background
                     if (!isBCryptHash(hash)) {
                         upgradePasswordHash(normalizedUsername, password);
                     }

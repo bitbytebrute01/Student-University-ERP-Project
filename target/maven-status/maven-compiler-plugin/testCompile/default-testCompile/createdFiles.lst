@@ -1,1 +1,5 @@
+com/university/integration/AssignmentWorkflowTest.class
+com/university/integration/WorkflowVerificationTest.class
+com/university/integration/IntegrationTestBase.class
+com/university/integration/ProfilePhotoPersistenceTest.class
 com/university/erp/LoginFlowTest.class

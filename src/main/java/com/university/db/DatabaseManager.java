@@ -99,6 +99,17 @@ public class DatabaseManager {
                     "FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE, " +
                     "FOREIGN KEY(course_id) REFERENCES courses(course_id) ON DELETE CASCADE)");
 
+            // PERSISTENT ATTENDANCE CODES (for code-based marking, with expiry and audit)
+            stmt.execute("CREATE TABLE IF NOT EXISTS attendance_codes (" +
+                    "id TEXT PRIMARY KEY, " +
+                    "course_id TEXT NOT NULL, " +
+                    "code TEXT NOT NULL, " +
+                    "created_by TEXT, " +
+                    "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+                    "expires_at DATETIME, " +
+                    "active INTEGER DEFAULT 1, " +
+                    "FOREIGN KEY(course_id) REFERENCES courses(course_id) ON DELETE CASCADE)");
+
             // LMS: ASSIGNMENTS
             stmt.execute("CREATE TABLE IF NOT EXISTS assignments (" +
                     "id TEXT PRIMARY KEY, " +
@@ -124,6 +135,7 @@ public class DatabaseManager {
                     "submission_id TEXT, " +
                     "assignment_id TEXT, " +
                     "student_id TEXT, " +
+                    "submission_text TEXT, " +
                     "file_path TEXT, " +
                     "submission_date DATETIME DEFAULT CURRENT_TIMESTAMP, " +
                     "submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
@@ -201,6 +213,7 @@ public class DatabaseManager {
             addColumnIfMissing(conn, "assignments", "created_at", "DATETIME");
             addColumnIfMissing(conn, "assignments", "status", "TEXT DEFAULT 'Published'");
             addColumnIfMissing(conn, "submissions", "submission_id", "TEXT");
+            addColumnIfMissing(conn, "submissions", "submission_text", "TEXT");
             addColumnIfMissing(conn, "submissions", "submitted_at", "DATETIME");
             addColumnIfMissing(conn, "submissions", "status", "TEXT DEFAULT 'Submitted'");
 
@@ -257,7 +270,8 @@ public class DatabaseManager {
                     "ON submissions(assignment_id, student_id)");
             stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_assignment_id " +
                     "ON assignments(assignment_id)");
-            ensureAssignmentSubmissionsTable(stmt);
+            ensureAssignmentSubmissionsTable(conn, stmt);
+            ensureAssignmentNotificationTables(stmt);
             stmt.execute("CREATE VIEW IF NOT EXISTS student_profiles AS " +
                     "SELECT id AS student_id, name, email, phone, department, semester, bio, resume_path, " +
                     "profile_pic, cover_pic, linkedin_url, github_url, portfolio_url FROM students");
@@ -270,21 +284,34 @@ public class DatabaseManager {
     }
 
     private static void migrateAssignmentMetadata(Statement stmt) throws SQLException {
+        String deadlineDateTime = sqliteDateTimeExpression("deadline");
+        String createdAtDateTime = sqliteDateTimeExpression("created_at");
+        String submissionDateTime = sqliteDateTimeExpression("submission_date");
+        String submittedAtDateTime = sqliteDateTimeExpression("submitted_at");
+
         stmt.executeUpdate("UPDATE assignments SET assignment_id = id WHERE assignment_id IS NULL OR assignment_id = ''");
-        stmt.executeUpdate("UPDATE assignments SET due_date = date(deadline) WHERE deadline IS NOT NULL AND due_date IS NULL");
-        stmt.executeUpdate("UPDATE assignments SET due_time = COALESCE(NULLIF(strftime('%H:%M', deadline), '00:00'), '23:59') " +
+        stmt.executeUpdate("UPDATE assignments SET deadline = " + deadlineDateTime + " " +
+                "WHERE deadline IS NOT NULL AND " + deadlineDateTime + " IS NOT NULL");
+        stmt.executeUpdate("UPDATE assignments SET due_date = date(" + deadlineDateTime + ") WHERE deadline IS NOT NULL AND due_date IS NULL");
+        stmt.executeUpdate("UPDATE assignments SET due_time = COALESCE(NULLIF(strftime('%H:%M', " + deadlineDateTime + "), '00:00'), '23:59') " +
                 "WHERE due_time IS NULL OR due_time = ''");
         stmt.executeUpdate("UPDATE assignments SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");
+        stmt.executeUpdate("UPDATE assignments SET created_at = " + createdAtDateTime + " " +
+                "WHERE created_at IS NOT NULL AND " + createdAtDateTime + " IS NOT NULL");
         stmt.executeUpdate("UPDATE assignments SET status = 'Published' WHERE status IS NULL OR status = ''");
 
         stmt.executeUpdate("UPDATE submissions SET submission_id = id WHERE submission_id IS NULL OR submission_id = ''");
         stmt.executeUpdate("UPDATE submissions SET submitted_at = submission_date WHERE submitted_at IS NULL AND submission_date IS NOT NULL");
         stmt.executeUpdate("UPDATE submissions SET submitted_at = CURRENT_TIMESTAMP WHERE submitted_at IS NULL");
+        stmt.executeUpdate("UPDATE submissions SET submission_date = " + submissionDateTime + " " +
+                "WHERE submission_date IS NOT NULL AND " + submissionDateTime + " IS NOT NULL");
+        stmt.executeUpdate("UPDATE submissions SET submitted_at = " + submittedAtDateTime + " " +
+                "WHERE submitted_at IS NOT NULL AND " + submittedAtDateTime + " IS NOT NULL");
         stmt.executeUpdate("UPDATE submissions SET status = CASE WHEN is_graded = 1 THEN 'Graded' ELSE 'Submitted' END " +
                 "WHERE status IS NULL OR status = ''");
     }
 
-    private static void ensureAssignmentSubmissionsTable(Statement stmt) throws SQLException {
+    private static void ensureAssignmentSubmissionsTable(Connection conn, Statement stmt) throws SQLException {
         String objectType = null;
         try (ResultSet rs = stmt.executeQuery("SELECT type FROM sqlite_master WHERE name = 'assignment_submissions'")) {
             if (rs.next()) {
@@ -300,6 +327,7 @@ public class DatabaseManager {
                 "submission_id TEXT PRIMARY KEY, " +
                 "assignment_id TEXT NOT NULL, " +
                 "student_id TEXT NOT NULL, " +
+                "submission_text TEXT, " +
                 "file_path TEXT, " +
                 "submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
                 "status TEXT DEFAULT 'Submitted', " +
@@ -309,15 +337,55 @@ public class DatabaseManager {
                 "UNIQUE(assignment_id, student_id), " +
                 "FOREIGN KEY(assignment_id) REFERENCES assignments(id) ON DELETE CASCADE, " +
                 "FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE)");
+        addColumnIfMissing(conn, "assignment_submissions", "submission_text", "TEXT");
 
         stmt.executeUpdate("INSERT OR REPLACE INTO assignment_submissions " +
-                "(submission_id, assignment_id, student_id, file_path, submitted_at, status, marks, feedback, is_graded) " +
-                "SELECT COALESCE(submission_id, id), assignment_id, student_id, file_path, " +
+                "(submission_id, assignment_id, student_id, submission_text, file_path, submitted_at, status, marks, feedback, is_graded) " +
+                "SELECT COALESCE(submission_id, id), assignment_id, student_id, submission_text, file_path, " +
                 "COALESCE(submitted_at, submission_date), " +
                 "COALESCE(status, CASE WHEN is_graded = 1 THEN 'Graded' ELSE 'Submitted' END), " +
                 "marks, feedback, is_graded " +
                 "FROM submissions " +
                 "WHERE assignment_id IS NOT NULL AND student_id IS NOT NULL AND COALESCE(submission_id, id) IS NOT NULL");
+
+        String submittedAtDateTime = sqliteDateTimeExpression("submitted_at");
+        stmt.executeUpdate("UPDATE assignment_submissions SET submitted_at = " + submittedAtDateTime + " " +
+                "WHERE submitted_at IS NOT NULL AND " + submittedAtDateTime + " IS NOT NULL");
+    }
+
+    private static void ensureAssignmentNotificationTables(Statement stmt) throws SQLException {
+        stmt.execute("CREATE TABLE IF NOT EXISTS assignment_submission_files (" +
+                "id TEXT PRIMARY KEY, " +
+                "submission_id TEXT NOT NULL, " +
+                "file_path TEXT NOT NULL, " +
+                "uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+                "FOREIGN KEY(submission_id) REFERENCES submissions(id) ON DELETE CASCADE)");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_assignment_submission_files_submission " +
+                "ON assignment_submission_files(submission_id)");
+
+        stmt.executeUpdate("INSERT OR IGNORE INTO assignment_submission_files (id, submission_id, file_path) " +
+                "SELECT COALESCE(submission_id, id) || '-file-1', id, file_path " +
+                "FROM submissions WHERE file_path IS NOT NULL AND file_path <> ''");
+
+        stmt.execute("CREATE TABLE IF NOT EXISTS assignment_notifications (" +
+                "id TEXT PRIMARY KEY, " +
+                "student_id TEXT NOT NULL, " +
+                "assignment_id TEXT NOT NULL, " +
+                "course_id TEXT NOT NULL, " +
+                "title TEXT NOT NULL, " +
+                "message TEXT NOT NULL, " +
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+                "read_at DATETIME, " +
+                "UNIQUE(student_id, assignment_id), " +
+                "FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE, " +
+                "FOREIGN KEY(assignment_id) REFERENCES assignments(id) ON DELETE CASCADE, " +
+                "FOREIGN KEY(course_id) REFERENCES courses(course_id) ON DELETE CASCADE)");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_assignment_notifications_student_unread " +
+                "ON assignment_notifications(student_id, read_at, created_at)");
+
+        String createdAtDateTime = sqliteDateTimeExpression("created_at");
+        stmt.executeUpdate("UPDATE assignment_notifications SET created_at = " + createdAtDateTime + " " +
+                "WHERE created_at IS NOT NULL AND " + createdAtDateTime + " IS NOT NULL");
     }
 
     private static void addColumnIfMissing(Connection conn, String tableName, String columnName, String definition) throws SQLException {
@@ -340,5 +408,14 @@ public class DatabaseManager {
             }
         }
         return false;
+    }
+
+    private static String sqliteDateTimeExpression(String expression) {
+        String textExpression = "TRIM(CAST(" + expression + " AS TEXT))";
+        return "CASE " +
+                "WHEN " + expression + " IS NULL THEN NULL " +
+                "WHEN typeof(" + expression + ") IN ('integer','real') THEN datetime(" + expression + " / 1000, 'unixepoch') " +
+                "WHEN " + textExpression + " <> '' AND " + textExpression + " NOT GLOB '*[^0-9]*' THEN datetime(CAST(" + expression + " AS INTEGER) / 1000, 'unixepoch') " +
+                "ELSE datetime(" + expression + ") END";
     }
 }

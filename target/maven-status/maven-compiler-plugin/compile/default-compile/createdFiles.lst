@@ -48,6 +48,7 @@ com/university/threads/AttendanceThread.class
 com/university/erp/gui/legacy/FacultyMarksPanel.class
 com/university/erp/analytics/ExecutiveAnalytics.class
 com/university/interfaces/ResultGenerator.class
+com/university/lms/AssignmentManager$FacultyAssignmentMetrics.class
 com/university/students/StudentManager$3.class
 com/university/models/Admin.class
 com/university/gui/AdminStudentPanel.class
@@ -61,6 +62,7 @@ com/university/exceptions/FeePendingException.class
 com/university/courses/CourseManager.class
 com/university/db/DataMigrator.class
 com/university/erp/gui/legacy/StudentProfilePanel.class
+com/university/utils/OrphanedFileCleaner.class
 com/university/erp/gui/admin/AdminCommandCenter.class
 com/university/erp/gui/legacy/DigitalIDCardPanel.class
 com/university/erp/security/AdminUser.class
@@ -102,6 +104,7 @@ com/university/interfaces/Printable.class
 com/university/reports/ReportManager.class
 com/university/rmi/shared/UniversityService.class
 com/university/interfaces/Notifiable.class
+com/university/models/AssignmentNotification.class
 com/university/models/Company.class
 com/university/fees/FeeManager.class
 com/university/examination/ExamManager.class
@@ -110,6 +113,7 @@ com/university/erp/gui/student/GamificationPanel$1.class
 com/university/erp/gui/student/CertificationHub.class
 com/university/models/Course.class
 com/university/erp/gui/faculty/FacultyDashboard.class
+com/university/erp/gui/student/AssignmentHub$2.class
 com/university/erp/gui/legacy/AIRiskPanel.class
 com/university/erp/gui/student/GamificationPanel.class
 com/university/students/StudentManager.class

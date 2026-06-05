@@ -19,9 +19,18 @@ public final class StudentContext {
         String studentId = resolveStudentId(user);
         Student student = studentManager.searchById(studentId);
 
+        if (student == null && studentId != null && !studentId.equals(username)) {
+            // Try fallback: maybe refId was not set correctly; attempt username as student id
+            Student fallback = studentManager.searchById(username);
+            if (fallback != null) {
+                System.out.println("Warning: user '" + username + "' referenced ref_id '" + studentId + "' which was not found; falling back to username as student id.");
+                return fallback;
+            }
+        }
+
         if (student == null) {
             throw new IllegalStateException(
-                    "Student record not found for authenticated user: " + username
+                    "Student record not found for authenticated user: " + username + " (looked up '" + studentId + "')"
             );
         }
 
