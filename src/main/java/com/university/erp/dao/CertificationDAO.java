@@ -10,15 +10,35 @@ import java.util.List;
 public class CertificationDAO {
     public void addCertification(Certification c) throws SQLException {
         String sql = "INSERT INTO student_certifications (id, student_id, title, issuer, completion_date, file_path) VALUES (?, ?, ?, ?, ?, ?)";
-        try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, c.getId());
-            pstmt.setString(2, c.getStudentId());
-            pstmt.setString(3, c.getTitle());
-            pstmt.setString(4, c.getIssuer());
-            pstmt.setDate(5, new java.sql.Date(c.getCompletionDate().getTime()));
-            pstmt.setString(6, c.getFilePath());
-            pstmt.executeUpdate();
+        Connection conn = DatabaseManager.getConnection();
+        boolean committed = false;
+        String finalized = null;
+        try {
+            conn.setAutoCommit(false);
+            if (c.getFilePath() != null && com.university.utils.MediaManager.isTempPath(c.getFilePath())) {
+                finalized = com.university.utils.MediaManager.finalizeUpload(c.getFilePath(), "certifications/" + c.getStudentId());
+                c.setFilePath(finalized);
+            }
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, c.getId());
+                pstmt.setString(2, c.getStudentId());
+                pstmt.setString(3, c.getTitle());
+                pstmt.setString(4, c.getIssuer());
+                pstmt.setDate(5, new java.sql.Date(c.getCompletionDate().getTime()));
+                pstmt.setString(6, c.getFilePath());
+                pstmt.executeUpdate();
+            }
+            conn.commit();
+            committed = true;
+        } catch (SQLException e) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+            if (finalized != null) com.university.utils.MediaManager.deleteFile(finalized);
+            throw e;
+        } catch (java.io.IOException ioe) {
+            if (finalized != null) com.university.utils.MediaManager.deleteFile(finalized);
+            throw new SQLException("Failed to finalize certification file: " + ioe.getMessage(), ioe);
+        } finally {
+            try { conn.setAutoCommit(true); conn.close(); } catch (Exception ignored) {}
         }
     }
 

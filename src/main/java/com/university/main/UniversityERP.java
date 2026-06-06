@@ -140,9 +140,17 @@ public class UniversityERP {
 
             Path sourceImage = Files.createTempFile("alice-profile-", ".png");
             writeVerificationImage(sourceImage);
-            String profilePath = MediaManager.saveImage(sourceImage.toFile(), "profiles");
-            alice.setProfilePicturePath(profilePath);
-            studentManager.updateStudent(alice);
+            String tempProfile = MediaManager.saveTempImage(sourceImage.toFile());
+            // finalize during update
+            alice.setProfilePicturePath(tempProfile);
+            // finalize and update in one step
+            try {
+                String finalizedProfile = MediaManager.finalizeUpload(tempProfile, "profiles/" + alice.getId());
+                alice.setProfilePicturePath(finalizedProfile);
+                studentManager.updateStudent(alice);
+            } catch (Exception io) {
+                throw new IllegalStateException("Failed to finalize profile during verification: " + io.getMessage(), io);
+            }
 
             Student reloadedAlice = studentManager.searchById("S001");
             if (reloadedAlice == null || reloadedAlice.getProfilePicturePath() == null || !Files.exists(Path.of(reloadedAlice.getProfilePicturePath()))) {
@@ -188,12 +196,13 @@ public class UniversityERP {
             Files.writeString(sourcePdf, "%PDF-1.4\nAlice verification submission\n%%EOF\n");
             Path sourceZip = Files.createTempFile("alice-assignment-bundle-", ".zip");
             Files.writeString(sourceZip, "verification bundle");
-            List<String> submissionPaths = MediaManager.saveSubmissionFiles(
-                    List.of(sourcePdf.toFile(), sourceZip.toFile()),
-                    "submissions/" + assignment.getId() + "/" + reloadedAlice.getId());
+            // save to temp and submit; AssignmentManager will finalize
+            List<String> tempSubmissionPaths = new java.util.ArrayList<>();
+            tempSubmissionPaths.add(MediaManager.saveTemp(sourcePdf.toFile()));
+            tempSubmissionPaths.add(MediaManager.saveTemp(sourceZip.toFile()));
             Submission submission = new Submission("VERIFY-S001-A-LMS", assignment.getId(), reloadedAlice.getId(), null);
             submission.setSubmissionText("Verification text response for the LMS assignment workflow.");
-            submission.setAttachmentPaths(submissionPaths);
+            submission.setAttachmentPaths(tempSubmissionPaths);
             assignmentManager.submitAssignment(submission);
 
             Submission loadedSubmission = assignmentManager.getStudentSubmission(reloadedAlice.getId(), assignment.getId());

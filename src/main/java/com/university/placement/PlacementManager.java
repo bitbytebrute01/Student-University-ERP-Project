@@ -23,7 +23,7 @@ public class PlacementManager {
             pstmt.setString(4, company.getJobRole());
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Error registering company: " + e.getMessage());
+            throw new IllegalStateException("Error registering company: " + e.getMessage(), e);
         }
     }
 
@@ -38,7 +38,7 @@ public class PlacementManager {
                 eligible.add(studentManager.searchById(rs.getString("id")));
             }
         } catch (SQLException e) {
-            System.err.println("Error getting eligible students: " + e.getMessage());
+            throw new IllegalStateException("Error getting eligible students: " + e.getMessage(), e);
         }
         return eligible;
     }
@@ -53,7 +53,7 @@ public class PlacementManager {
                 System.out.println(rs.getString("name") + " - Role: " + rs.getString("job_role") + " - Min CGPA: " + rs.getDouble("required_cgpa"));
             }
         } catch (SQLException e) {
-            System.err.println("Error printing placement stats: " + e.getMessage());
+            throw new IllegalStateException("Error printing placement stats: " + e.getMessage(), e);
         }
     }
 }

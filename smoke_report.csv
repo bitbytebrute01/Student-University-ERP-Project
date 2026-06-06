@@ -1,0 +1,6 @@
+course_selected,student_id,assignment_id,assignment_title,notification_id,notification_created_at,assignment_visible
+C-SMOKE-1,S-SM-01,A-SM-1,"Smoke Test Assignment",N-SM-S-SM-01,"2026-06-05 15:42:17",yes
+C-SMOKE-1,S-SM-02,A-SM-1,"Smoke Test Assignment",N-SM-S-SM-02,"2026-06-05 15:42:17",yes
+C-SMOKE-1,S-SM-03,A-SM-1,"Smoke Test Assignment",N-SM-S-SM-03,"2026-06-05 15:42:17",yes
+C-SMOKE-1,S-SM-04,A-SM-1,"Smoke Test Assignment",N-SM-S-SM-04,"2026-06-05 15:42:17",yes
+C-SMOKE-1,S-SM-05,A-SM-1,"Smoke Test Assignment",N-SM-S-SM-05,"2026-06-05 15:42:17",yes

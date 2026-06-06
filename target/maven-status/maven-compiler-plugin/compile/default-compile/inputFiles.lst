@@ -3,17 +3,20 @@
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/exceptions/StudentNotFoundException.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/security/StudentContext.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/interfaces/Storable.java
+/Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/sync/DBPoller.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/admin/AttendanceDashboard.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/gui/AdminStudentPanel.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/interfaces/Authenticatable.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/examination/GradeCalculator.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/student/StudentLinkedInProfile.java
+/Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/tools/UiSnapshot.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/security/StudentUser.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/utils/AuditLogger.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/utils/FileHandler.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/reports/ReportManager.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/placement/PlacementOfficer.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/theme/ThemeManager.java
+/Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/test/ThemeLoadTest.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/security/SessionManager.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/library/LibraryManager.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/legacy/AuditLogPanel.java
@@ -29,6 +32,7 @@
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/student/AssignmentHub.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/models/Room.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/models/Book.java
+/Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/tools/UiFlowRunner.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/exceptions/BookUnavailableException.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/models/Assignment.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/legacy/StudentResultsPanel.java
@@ -44,6 +48,7 @@
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/legacy/AIRiskPanel.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/placement/PlacementManager.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/faculty/FacultyManager.java
+/Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/test/TwoJvmSimulation.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/main/UniversityERP.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/lms/ForumManager.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/interfaces/Searchable.java
@@ -86,6 +91,7 @@
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/exceptions/CourseNotFoundException.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/dao/CertificationDAO.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/security/FacultyUser.java
+/Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/UIEventBus.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/interfaces/Payable.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/student/ProfileEditor.java
 /Users/adityajoshi/Desktop/Student-University-ERP-Project/src/main/java/com/university/erp/gui/student/ProjectPanel.java

@@ -67,6 +67,8 @@ public class FacultyAttendancePanel extends JPanel {
 
             try {
                 attendanceManager.markAttendance(studentId, courseId, isPresent);
+                // notify UI
+                com.university.erp.gui.UIEventBus.publish("ATTENDANCE_UPDATED", studentId);
                 JOptionPane.showMessageDialog(this, "Attendance marked successfully!");
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());

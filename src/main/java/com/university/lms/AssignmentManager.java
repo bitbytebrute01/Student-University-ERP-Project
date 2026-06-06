@@ -707,7 +707,8 @@ public class AssignmentManager {
     }
 
     private void updateAssignmentSubmissionGrade(Connection conn, String submissionId, double marks, String feedback) throws SQLException {
-        String sql = "UPDATE assignment_submissions SET marks = ?, feedback = ?, is_graded = 1, status = ? " +
+        // Update grade and set graded_at so other application instances can detect the change via polling
+        String sql = "UPDATE assignment_submissions SET marks = ?, feedback = ?, is_graded = 1, status = ?, graded_at = CURRENT_TIMESTAMP " +
                 "WHERE submission_id = ?";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setDouble(1, marks);

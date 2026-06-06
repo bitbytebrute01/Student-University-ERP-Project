@@ -15,6 +15,8 @@ public class FacultyDashboard extends JPanel {
     private CourseManager courseManager = new CourseManager();
     private AssignmentManager assignmentManager = new AssignmentManager();
     private String facultyId;
+    private JPanel metricsPanel;
+    private final java.util.List<Runnable> uiUnsubHandles = new java.util.ArrayList<>();
 
     public FacultyDashboard() {
         facultyId = resolveFacultyId();
@@ -26,14 +28,10 @@ public class FacultyDashboard extends JPanel {
         add(title, "span 2");
 
         // Metrics
-        AssignmentManager.FacultyAssignmentMetrics metrics = assignmentManager.getFacultyAssignmentMetrics(facultyId, false);
-        JPanel stats = new JPanel(new MigLayout("ins 0, gap 20", "[grow][grow][grow][grow]", "[]"));
-        stats.setOpaque(false);
-        stats.add(createStatCard("Total Assignments", metrics.getTotalAssignments()));
-        stats.add(createStatCard("Pending Reviews", metrics.getPendingReviews()));
-        stats.add(createStatCard("Late Submissions", metrics.getLateSubmissions()));
-        stats.add(createStatCard("Recent Submissions", metrics.getRecentSubmissions()));
-        add(stats, "span 2, growx");
+        metricsPanel = new JPanel(new MigLayout("ins 0, gap 20", "[grow][grow][grow][grow]", "[]"));
+        metricsPanel.setOpaque(false);
+        add(metricsPanel, "span 2, growx");
+        refreshMetrics();
 
         // Info Cards
         JPanel coursesCard = ThemeManager.createGlassCard();
@@ -50,6 +48,18 @@ public class FacultyDashboard extends JPanel {
         alerts.add(new JLabel("● Attendance checking thread is active."));
         alerts.add(new JLabel("● Assignment deadlines approaching for CS-101."));
         add(alerts, "grow, h 300!");
+
+        // subscribe to UI events to refresh metrics when assignments or grading happens
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_PUBLISHED", payload -> refreshMetrics()));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_GRADED", payload -> refreshMetrics()));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ATTENDANCE_UPDATED", payload -> refreshMetrics()));
+    }
+
+    @Override
+    public void removeNotify() {
+        super.removeNotify();
+        for (Runnable r : uiUnsubHandles) { try { r.run(); } catch (Exception ignored) {} }
+        uiUnsubHandles.clear();
     }
 
     private int getTotalStudentsEnrolled() {
@@ -69,6 +79,18 @@ public class FacultyDashboard extends JPanel {
         p.add(val);
         p.add(new JLabel(label));
         return p;
+    }
+
+    private void refreshMetrics() {
+        if (metricsPanel == null) return;
+        metricsPanel.removeAll();
+        AssignmentManager.FacultyAssignmentMetrics metrics = assignmentManager.getFacultyAssignmentMetrics(facultyId, false);
+        metricsPanel.add(createStatCard("Total Assignments", metrics.getTotalAssignments()));
+        metricsPanel.add(createStatCard("Pending Reviews", metrics.getPendingReviews()));
+        metricsPanel.add(createStatCard("Late Submissions", metrics.getLateSubmissions()));
+        metricsPanel.add(createStatCard("Recent Submissions", metrics.getRecentSubmissions()));
+        metricsPanel.revalidate();
+        metricsPanel.repaint();
     }
 
     private String resolveFacultyId() {

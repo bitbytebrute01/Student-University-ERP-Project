@@ -106,11 +106,11 @@ public class ProjectPanel extends JPanel {
                 Project p = new Project(UUID.randomUUID().toString().substring(0, 8), studentId, titleField.getText(), descArea.getText());
                 
                 if (!screenshotPath.getText().equals("None")) 
-                    p.setScreenshotPath(MediaManager.saveImage(new File(screenshotPath.getText()), "projects/screenshots"));
+                    p.setScreenshotPath(MediaManager.saveTemp(new File(screenshotPath.getText())));
                 if (!reportPath.getText().equals("None")) 
-                    p.setReportPath(MediaManager.saveFile(new File(reportPath.getText()), "projects/reports"));
+                    p.setReportPath(MediaManager.saveTemp(new File(reportPath.getText())));
                 if (!zipPath.getText().equals("None")) 
-                    p.setZipPath(MediaManager.saveSubmissionFile(new File(zipPath.getText()), "projects/source"));
+                    p.setZipPath(MediaManager.saveTemp(new File(zipPath.getText())));
 
                 projectDAO.addProject(p);
                 JOptionPane.showMessageDialog(this, "Project added successfully!");

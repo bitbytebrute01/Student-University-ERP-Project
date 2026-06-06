@@ -28,6 +28,7 @@ public class AssignmentHub extends JPanel {
     private DefaultTableModel tableModel;
     private String studentId;
     private JLabel notificationLabel;
+    private final java.util.List<Runnable> uiUnsubHandles = new java.util.ArrayList<>();
 
     public AssignmentHub() {
         this(StudentContext.requireCurrentStudent());
@@ -68,36 +69,78 @@ public class AssignmentHub extends JPanel {
         submitBtn.setForeground(Color.WHITE);
         submitBtn.addActionListener(e -> showSubmitDialog());
         add(submitBtn, "h 40!");
+
+        // subscribe to UI events to refresh assignment list when relevant
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_PUBLISHED", payload -> refreshTable()));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_GRADED", payload -> refreshTable()));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("NOTIFICATION_CREATED", payload -> refreshTable()));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("SUBMISSION_CREATED", payload -> refreshTable()));
+    }
+
+    @Override
+    public void removeNotify() {
+        super.removeNotify();
+        for (Runnable r : uiUnsubHandles) { try { r.run(); } catch (Exception ignored) {} }
+        uiUnsubHandles.clear();
     }
 
     private void refreshTable() {
+        // Load notifications and assignments off the EDT to keep UI responsive
         refreshNotifications();
         tableModel.setRowCount(0);
-        SimpleDateFormat dueDateFormat = new SimpleDateFormat("yyyy-MM-dd");
-        List<Assignment> assignments = assignmentManager.getAssignmentsForStudent(studentId);
-        for (Assignment a : assignments) {
-            Course c = courseManager.searchById(a.getCourseId());
-            Submission s = assignmentManager.getStudentSubmission(studentId, a.getId());
-            String status = assignmentManager.getStudentAssignmentStatus(studentId, a);
-            String grade = (s != null && s.isGraded()) ? String.valueOf(s.getMarks()) : "-";
-            String feedback = (s != null && s.getFeedback() != null && !s.getFeedback().isBlank()) ? s.getFeedback() : "-";
-            String dueDate = a.getDeadline() == null ? "-" : dueDateFormat.format(a.getDeadline());
-            String files = s == null || !s.hasAttachments() ? "-" : s.getAttachmentPaths().size() + " file(s)";
-            String courseName = c == null ? a.getCourseId() : c.getCourseName();
-            tableModel.addRow(new Object[]{
-                    a.getId(),
-                    courseName,
-                    a.getTitle(),
-                    a.getDescription(),
-                    dueDate,
-                    a.getDueTime() == null ? "-" : a.getDueTime(),
-                    assignmentManager.getDeadlineCountdown(a),
-                    status,
-                    grade,
-                    feedback,
-                    files
-            });
-        }
+        final SimpleDateFormat dueDateFormat = new SimpleDateFormat("yyyy-MM-dd");
+
+        JDialog loading = new JDialog(SwingUtilities.getWindowAncestor(this));
+        loading.setUndecorated(true);
+        JPanel p = new JPanel(new BorderLayout());
+        p.setBorder(BorderFactory.createLineBorder(ThemeManager.border(), 1));
+        p.setBackground(ThemeManager.surface());
+        JProgressBar bar = new JProgressBar();
+        bar.setIndeterminate(true);
+        bar.setPreferredSize(new Dimension(240, 18));
+        p.add(new JLabel("Loading assignments...", SwingConstants.CENTER), BorderLayout.NORTH);
+        p.add(bar, BorderLayout.CENTER);
+        loading.getContentPane().add(p);
+        loading.pack();
+        loading.setLocationRelativeTo(this);
+
+        SwingWorker<Void, Object[]> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                List<Assignment> assignments = assignmentManager.getAssignmentsForStudent(studentId);
+                for (Assignment a : assignments) {
+                    Course c = courseManager.searchById(a.getCourseId());
+                    Submission s = assignmentManager.getStudentSubmission(studentId, a.getId());
+                    String status = assignmentManager.getStudentAssignmentStatus(studentId, a);
+                    String grade = (s != null && s.isGraded()) ? String.valueOf(s.getMarks()) : "-";
+                    String feedback = (s != null && s.getFeedback() != null && !s.getFeedback().isBlank()) ? s.getFeedback() : "-";
+                    String dueDate = a.getDeadline() == null ? "-" : dueDateFormat.format(a.getDeadline());
+                    String files = s == null || !s.hasAttachments() ? "-" : s.getAttachmentPaths().size() + " file(s)";
+                    String courseName = c == null ? a.getCourseId() : c.getCourseName();
+                    publish(new Object[]{a.getId(), courseName, a.getTitle(), a.getDescription(), dueDate, a.getDueTime() == null ? "-" : a.getDueTime(), assignmentManager.getDeadlineCountdown(a), status, grade, feedback, files});
+                }
+                return null;
+            }
+
+            @Override
+            protected void process(java.util.List<Object[]> chunks) {
+                for (Object[] row : chunks) {
+                    tableModel.addRow(row);
+                }
+            }
+
+            @Override
+            protected void done() {
+                loading.setVisible(false);
+                loading.dispose();
+            }
+        };
+
+        // show loading and execute
+        SwingUtilities.invokeLater(() -> {
+            loading.setVisible(true);
+            worker.execute();
+        });
     }
 
     private void refreshNotifications() {
@@ -169,14 +212,19 @@ public class AssignmentHub extends JPanel {
                 for (int i = 0; i < fileModel.size(); i++) {
                     selectedFiles.add(fileModel.get(i));
                 }
-                List<String> savedPaths = selectedFiles.isEmpty()
-                        ? new ArrayList<>()
-                        : MediaManager.saveSubmissionFiles(selectedFiles, "submissions/" + assignmentId + "/" + studentId);
+                List<String> savedPaths = new ArrayList<>();
+                if (!selectedFiles.isEmpty()) {
+                    for (File f : selectedFiles) {
+                        savedPaths.add(MediaManager.saveTemp(f));
+                    }
+                }
 
                 Submission s = new Submission("SUB-" + UUID.randomUUID().toString().substring(0, 8), assignmentId, studentId, null);
                 s.setSubmissionText(responseArea.getText());
                 s.setAttachmentPaths(savedPaths);
                 assignmentManager.submitAssignment(s);
+                // notify faculty dashboards and other UI about new submission
+                com.university.erp.gui.UIEventBus.publish("SUBMISSION_CREATED", s);
 
                 JOptionPane.showMessageDialog(this, "Assignment submitted successfully. Status: " + s.getStatus());
                 refreshTable();

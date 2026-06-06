@@ -67,8 +67,27 @@ public class PlacementProfilePanel extends JPanel {
                 student.setGithubUrl(githubField.getText());
                 student.setLinkedInUrl(linkedinField.getText());
                 student.setPortfolioUrl(portfolioField.getText());
-                studentManager.updateStudent(student);
-                JOptionPane.showMessageDialog(this, "Placement profile updated!");
+
+                String currentResume = student.getResumePath();
+                String finalized = null;
+                if (currentResume != null && MediaManager.isTempPath(currentResume)) {
+                    try {
+                        finalized = MediaManager.finalizeUpload(currentResume, "resumes/" + student.getId());
+                        student.setResumePath(finalized);
+                    } catch (Exception io) {
+                        JOptionPane.showMessageDialog(this, "Failed to finalize resume: " + io.getMessage());
+                        return;
+                    }
+                }
+
+                try {
+                    studentManager.updateStudent(student);
+                    JOptionPane.showMessageDialog(this, "Placement profile updated!");
+                    resumeStatus.setText(student.getResumePath() == null ? "No Resume Uploaded" : "Resume: " + student.getResumePath());
+                } catch (Exception ex) {
+                    if (finalized != null) MediaManager.deleteFile(finalized);
+                    JOptionPane.showMessageDialog(this, "Save Error: " + ex.getMessage());
+                }
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Save Error: " + ex.getMessage());
             }
@@ -79,10 +98,9 @@ public class PlacementProfilePanel extends JPanel {
             chooser.setFileFilter(new FileNameExtensionFilter("PDF files (*.pdf)", "pdf"));
             if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
                 try {
-                    String path = MediaManager.savePdf(chooser.getSelectedFile(), "resumes");
-                    student.setResumePath(path);
-                    studentManager.updateStudent(student);
-                    resumeStatus.setText("Resume: " + path);
+                    String temp = MediaManager.saveTemp(chooser.getSelectedFile());
+                    student.setResumePath(temp);
+                    resumeStatus.setText("Resume staged (click Save to finalize)");
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(this, "Upload Error: " + ex.getMessage());
                 }

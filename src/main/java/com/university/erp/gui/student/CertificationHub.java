@@ -84,7 +84,7 @@ public class CertificationHub extends JPanel {
             try {
                 Certification c = new Certification(UUID.randomUUID().toString().substring(0, 8), studentId, titleField.getText(), issuerField.getText(), new Date());
                 if (!filePath.getText().equals("None")) {
-                    c.setFilePath(MediaManager.saveFile(new File(filePath.getText()), "certifications"));
+                    c.setFilePath(MediaManager.saveTemp(new File(filePath.getText())));
                 }
                 certificationDAO.addCertification(c);
                 JOptionPane.showMessageDialog(this, "Certification added!");

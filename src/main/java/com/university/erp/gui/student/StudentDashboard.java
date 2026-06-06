@@ -33,6 +33,7 @@ public class StudentDashboard extends JPanel {
     private final CourseManager courseManager = new CourseManager();
     private final AssignmentManager assignmentManager = new AssignmentManager();
     private Student student;
+    private final java.util.List<Runnable> uiUnsubHandles = new java.util.ArrayList<>();
 
     public StudentDashboard() {
         this(StudentContext.requireCurrentStudent());
@@ -45,7 +46,21 @@ public class StudentDashboard extends JPanel {
         this.student = student;
         setLayout(new BorderLayout());
         ThemeManager.stylePage(this);
+        // subscribe to assignment/notification events to refresh dashboard in real-time
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_PUBLISHED", payload -> refreshStudent(com.university.erp.security.StudentContext.requireCurrentStudent())));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_GRADED", payload -> refreshStudent(com.university.erp.security.StudentContext.requireCurrentStudent())));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("NOTIFICATION_CREATED", payload -> refreshStudent(com.university.erp.security.StudentContext.requireCurrentStudent())));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ATTENDANCE_UPDATED", payload -> refreshStudent(com.university.erp.security.StudentContext.requireCurrentStudent())));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("PROFILE_UPDATED", payload -> refreshStudent(com.university.erp.security.StudentContext.requireCurrentStudent())));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("PROFILE_STAGED", payload -> refreshStudent(com.university.erp.security.StudentContext.requireCurrentStudent())));
         buildDashboard();
+    }
+
+    @Override
+    public void removeNotify() {
+        super.removeNotify();
+        for (Runnable r : uiUnsubHandles) { try { r.run(); } catch (Exception ignored) {} }
+        uiUnsubHandles.clear();
     }
 
     public void refreshStudent(Student student) {
@@ -60,24 +75,57 @@ public class StudentDashboard extends JPanel {
     }
 
     private void buildDashboard() {
-        JPanel content = new JPanel(new MigLayout(
-                "fillx, ins 24, gap 16",
-                "[grow,fill]",
-                "[]16[]16[]"
-        ));
-        content.setOpaque(false);
+        // Show lightweight loading placeholder and load data off EDT
+        JPanel placeholder = new JPanel(new BorderLayout());
+        placeholder.setOpaque(false);
+        JProgressBar loading = new JProgressBar();
+        loading.setIndeterminate(true);
+        JLabel label = new JLabel("Loading dashboard...", SwingConstants.CENTER);
+        label.setFont(new Font("Inter", Font.PLAIN, 14));
+        placeholder.add(label, BorderLayout.NORTH);
+        placeholder.add(loading, BorderLayout.CENTER);
+        add(placeholder, BorderLayout.CENTER);
 
-        DashboardData data = loadDashboardData();
-        content.add(createProfileHeader(data), "growx, wrap");
-        content.add(createMetricGrid(data), "growx, wrap");
-        content.add(createDetailGrid(data), "growx");
+        SwingWorker<DashboardData, Void> worker = new SwingWorker<>() {
+            @Override
+            protected DashboardData doInBackground() throws Exception {
+                return loadDashboardData();
+            }
 
-        JScrollPane scrollPane = new JScrollPane(content);
-        scrollPane.setBorder(null);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(18);
-        scrollPane.setOpaque(false);
-        scrollPane.getViewport().setOpaque(false);
-        add(scrollPane, BorderLayout.CENTER);
+            @Override
+            protected void done() {
+                remove(placeholder);
+                try {
+                    DashboardData data = get();
+                    JPanel content = new JPanel(new MigLayout(
+                            "fillx, ins 24, gap 16",
+                            "[grow,fill]",
+                            "[]16[]16[]"
+                    ));
+                    content.setOpaque(false);
+
+                    content.add(createProfileHeader(data), "growx, wrap");
+                    content.add(createMetricGrid(data), "growx, wrap");
+                    content.add(createDetailGrid(data), "growx");
+
+                    JScrollPane scrollPane = new JScrollPane(content);
+                    scrollPane.setBorder(null);
+                    scrollPane.getVerticalScrollBar().setUnitIncrement(18);
+                    scrollPane.setOpaque(false);
+                    scrollPane.getViewport().setOpaque(false);
+                    add(scrollPane, BorderLayout.CENTER);
+
+                    revalidate();
+                    repaint();
+                } catch (Exception e) {
+                    remove(placeholder);
+                    add(new JLabel("Failed to load dashboard: " + e.getMessage()), BorderLayout.CENTER);
+                    revalidate();
+                    repaint();
+                }
+            }
+        };
+        worker.execute();
     }
 
     private JPanel createProfileHeader(DashboardData data) {
@@ -281,13 +329,25 @@ public class StudentDashboard extends JPanel {
         label.setBorder(BorderFactory.createLineBorder(ThemeManager.border(), 1));
 
         String path = student.getProfilePicturePath();
-        if (path != null && !path.isBlank() && new File(path).isFile()) {
-            ImageIcon imageIcon = new ImageIcon(path);
-            Image scaled = imageIcon.getImage().getScaledInstance(size, size, Image.SCALE_SMOOTH);
-            label.setIcon(new ImageIcon(scaled));
-        } else {
+        try {
+            if (path != null && !path.isBlank() && new File(path).isFile()) {
+                // Use ImageIO to robustly load different image formats
+                java.awt.Image img = javax.imageio.ImageIO.read(new File(path));
+                if (img != null) {
+                    Image scaled = img.getScaledInstance(size, size, Image.SCALE_SMOOTH);
+                    label.setIcon(new ImageIcon(scaled));
+                } else {
+                    label.setIcon(FontIcon.of(MaterialDesignA.ACCOUNT_CIRCLE, size - 8, new Color(156, 166, 176)));
+                }
+            } else {
+                label.setIcon(FontIcon.of(MaterialDesignA.ACCOUNT_CIRCLE, size - 8, new Color(156, 166, 176)));
+            }
+        } catch (Exception e) {
+            // Fallback to icon if any issue occurs while loading image
             label.setIcon(FontIcon.of(MaterialDesignA.ACCOUNT_CIRCLE, size - 8, new Color(156, 166, 176)));
         }
+        // ensure preferred size to avoid clipping
+        label.setPreferredSize(new Dimension(size, size));
         return label;
     }
 

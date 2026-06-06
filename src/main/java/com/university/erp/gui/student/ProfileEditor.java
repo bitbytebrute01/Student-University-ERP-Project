@@ -104,6 +104,17 @@ public class ProfileEditor extends JPanel {
                 try {
                     studentManager.updateStudent(student);
                     this.onProfileUpdated.accept(student);
+                    // update profile_updated_at for cross-process polling
+                    try (java.sql.Connection _c = com.university.db.DatabaseManager.getConnection();
+                         java.sql.PreparedStatement _p = _c.prepareStatement("UPDATE students SET profile_updated_at = CURRENT_TIMESTAMP WHERE id = ?")) {
+                        _p.setString(1, student.getId());
+                        _p.executeUpdate();
+                    } catch (java.sql.SQLException _e) {
+                        // Non-fatal for UI; log and continue
+                        System.err.println("Failed to update profile_updated_at: " + _e.getMessage());
+                    }
+                    // notify UI components about profile update
+                    com.university.erp.gui.UIEventBus.publish("PROFILE_UPDATED", student);
                     JOptionPane.showMessageDialog(this, "Profile updated successfully!");
                 } catch (Exception ex) {
                     // rollback finalized file if DB update failed
@@ -128,6 +139,8 @@ public class ProfileEditor extends JPanel {
                     student.setProfilePicturePath(tempPath);
                     photoPreview.setIcon(loadProfileIcon(88));
                     this.onProfileUpdated.accept(student);
+                    // publish staged profile so other UI components (preview areas) update immediately
+                    com.university.erp.gui.UIEventBus.publish("PROFILE_STAGED", student);
                     JOptionPane.showMessageDialog(this, "Profile photo staged. Click Save to persist.");
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(this, "Upload Error: " + ex.getMessage());

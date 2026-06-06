@@ -79,15 +79,52 @@ public class FacultyLMSPanel extends JPanel {
     private void refreshAssignments() {
         refreshMetrics();
         tableModel.setRowCount(0);
-        List<Course> courses = getManagedCourses();
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-        for (Course c : courses) {
-            List<Assignment> assignments = assignmentManager.getAssignmentsByCourse(c.getCourseId());
-            for (Assignment a : assignments) {
-                String dueDate = a.getDeadline() == null ? "-" : dateFormat.format(a.getDeadline());
-                tableModel.addRow(new Object[]{a.getId(), c.getCourseName(), a.getTitle(), dueDate, a.getDueTime(), a.getStatus(), a.getMaxMarks()});
+        final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+
+        JDialog loading = new JDialog(SwingUtilities.getWindowAncestor(this));
+        loading.setUndecorated(true);
+        JPanel p = new JPanel(new BorderLayout());
+        p.setBorder(BorderFactory.createLineBorder(ThemeManager.border(), 1));
+        p.setBackground(ThemeManager.surface());
+        JProgressBar bar = new JProgressBar();
+        bar.setIndeterminate(true);
+        bar.setPreferredSize(new Dimension(220, 16));
+        p.add(new JLabel("Loading assignments...", SwingConstants.CENTER), BorderLayout.NORTH);
+        p.add(bar, BorderLayout.CENTER);
+        loading.getContentPane().add(p);
+        loading.pack();
+        loading.setLocationRelativeTo(this);
+
+        SwingWorker<Void, Object[]> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                List<Course> courses = getManagedCourses();
+                for (Course c : courses) {
+                    List<Assignment> assignments = assignmentManager.getAssignmentsByCourse(c.getCourseId());
+                    for (Assignment a : assignments) {
+                        String dueDate = a.getDeadline() == null ? "-" : dateFormat.format(a.getDeadline());
+                        publish(new Object[]{a.getId(), c.getCourseName(), a.getTitle(), dueDate, a.getDueTime(), a.getStatus(), a.getMaxMarks()});
+                    }
+                }
+                return null;
             }
-        }
+
+            @Override
+            protected void process(java.util.List<Object[]> chunks) {
+                for (Object[] row : chunks) tableModel.addRow(row);
+            }
+
+            @Override
+            protected void done() {
+                loading.setVisible(false);
+                loading.dispose();
+            }
+        };
+
+        SwingUtilities.invokeLater(() -> {
+            loading.setVisible(true);
+            worker.execute();
+        });
     }
 
     private void refreshMetrics() {
@@ -169,6 +206,10 @@ public class FacultyLMSPanel extends JPanel {
                 a.setDueTime(dueTime.toString());
                 a.setStatus("Published");
                 assignmentManager.createAssignment(a);
+                // notify UI listeners so student dashboards refresh immediately
+                com.university.erp.gui.UIEventBus.publish("ASSIGNMENT_PUBLISHED", a);
+                // also signal notification creation so header badges refresh immediately
+                com.university.erp.gui.UIEventBus.publish("NOTIFICATION_CREATED", a);
                 refreshAssignments();
                 JOptionPane.showMessageDialog(this, "Assignment published to enrolled students.");
             } catch (Exception ex) {
@@ -272,6 +313,8 @@ public class FacultyLMSPanel extends JPanel {
                 subModel.setValueAt("Graded", subRow, 4);
                 subModel.setValueAt(marks, subRow, 5);
                 subModel.setValueAt(feedback, subRow, 6);
+                // notify UI listeners to refresh dashboards/notifications
+                com.university.erp.gui.UIEventBus.publish("ASSIGNMENT_GRADED", selectedSub);
                 refreshMetrics();
                 JOptionPane.showMessageDialog(this, "Grade recorded.");
             } catch (Exception ex) {

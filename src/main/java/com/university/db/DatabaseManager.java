@@ -96,10 +96,12 @@ public class DatabaseManager {
                     "course_id TEXT, " +
                     "date DATE DEFAULT CURRENT_DATE, " +
                     "is_present BOOLEAN, " +
+                    "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
                     "FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE, " +
                     "FOREIGN KEY(course_id) REFERENCES courses(course_id) ON DELETE CASCADE)");
+            addColumnIfMissing(conn, "attendance", "updated_at", "DATETIME");
 
-            // PERSISTENT ATTENDANCE CODES (for code-based marking, with expiry and audit)
+            // PERSISTENT ATTENDANCE CODES (legacy) and ATTENDANCE SESSIONS/AUDIT
             stmt.execute("CREATE TABLE IF NOT EXISTS attendance_codes (" +
                     "id TEXT PRIMARY KEY, " +
                     "course_id TEXT NOT NULL, " +
@@ -109,6 +111,32 @@ public class DatabaseManager {
                     "expires_at DATETIME, " +
                     "active INTEGER DEFAULT 1, " +
                     "FOREIGN KEY(course_id) REFERENCES courses(course_id) ON DELETE CASCADE)");
+
+            // New attendance session table implementing secure one-time code sessions
+            stmt.execute("CREATE TABLE IF NOT EXISTS attendance_sessions (" +
+                    "session_id TEXT PRIMARY KEY, " +
+                    "course_id TEXT NOT NULL, " +
+                    "faculty_id TEXT NOT NULL, " +
+                    "attendance_code TEXT NOT NULL, " +
+                    "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+                    "expires_at DATETIME, " +
+                    "status TEXT DEFAULT 'ACTIVE', " +
+                    "FOREIGN KEY(course_id) REFERENCES courses(course_id) ON DELETE CASCADE, " +
+                    "FOREIGN KEY(faculty_id) REFERENCES faculty(id) ON DELETE CASCADE)");
+
+            // Audit log for attendance marks (one row per student per session)
+            stmt.execute("CREATE TABLE IF NOT EXISTS attendance_audit (" +
+                    "audit_id TEXT PRIMARY KEY, " +
+                    "session_id TEXT NOT NULL, " +
+                    "student_id TEXT NOT NULL, " +
+                    "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+                    "ip_or_device_identifier TEXT, " +
+                    "status TEXT, " +
+                    "FOREIGN KEY(session_id) REFERENCES attendance_sessions(session_id) ON DELETE CASCADE, " +
+                    "FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE)");
+
+            stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_audit_session_student " +
+                    "ON attendance_audit(session_id, student_id)");
 
             // LMS: ASSIGNMENTS
             stmt.execute("CREATE TABLE IF NOT EXISTS assignments (" +
@@ -338,6 +366,10 @@ public class DatabaseManager {
                 "FOREIGN KEY(assignment_id) REFERENCES assignments(id) ON DELETE CASCADE, " +
                 "FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE)");
         addColumnIfMissing(conn, "assignment_submissions", "submission_text", "TEXT");
+            // Track grading timestamp for cross-process polling
+            addColumnIfMissing(conn, "assignment_submissions", "graded_at", "DATETIME");
+            // Track profile updates on students table for cross-process profile photo refresh
+            addColumnIfMissing(conn, "students", "profile_updated_at", "DATETIME");
 
         stmt.executeUpdate("INSERT OR REPLACE INTO assignment_submissions " +
                 "(submission_id, assignment_id, student_id, submission_text, file_path, submitted_at, status, marks, feedback, is_graded) " +

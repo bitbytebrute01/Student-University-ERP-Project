@@ -51,7 +51,7 @@ public class StudentManager implements Searchable<Student> {
             pstmt.setInt(25, student.getLevel());
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Error adding student: " + e.getMessage());
+            throw new IllegalStateException("Error adding student: " + e.getMessage(), e);
         }
     }
 
@@ -89,7 +89,7 @@ public class StudentManager implements Searchable<Student> {
             pstmt.setString(25, student.getId());
             if (pstmt.executeUpdate() == 0) throw new StudentNotFoundException("Student not found.");
         } catch (SQLException e) {
-            System.err.println("Error updating student: " + e.getMessage());
+            throw new IllegalStateException("Error updating student: " + e.getMessage(), e);
         }
     }
 
@@ -100,7 +100,7 @@ public class StudentManager implements Searchable<Student> {
             pstmt.setString(1, studentId);
             if (pstmt.executeUpdate() == 0) throw new StudentNotFoundException("Student not found.");
         } catch (SQLException e) {
-            System.err.println("Error deleting student: " + e.getMessage());
+            throw new IllegalStateException("Error deleting student: " + e.getMessage(), e);
         }
     }
 
@@ -115,7 +115,7 @@ public class StudentManager implements Searchable<Student> {
                 return mapResultSetToStudent(rs);
             }
         } catch (SQLException e) {
-            System.err.println("Error searching student: " + e.getMessage());
+            throw new IllegalStateException("Error searching student: " + e.getMessage(), e);
         }
         return null;
     }
@@ -130,7 +130,7 @@ public class StudentManager implements Searchable<Student> {
             ResultSet rs = pstmt.executeQuery();
             while (rs.next()) list.add(mapResultSetToStudent(rs));
         } catch (SQLException e) {
-            System.err.println("Error searching student by name: " + e.getMessage());
+            throw new IllegalStateException("Error searching student by name: " + e.getMessage(), e);
         }
         return list;
     }
@@ -150,7 +150,7 @@ public class StudentManager implements Searchable<Student> {
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) list.add(mapResultSetToStudent(rs));
         } catch (SQLException e) {
-            System.err.println("Error getting sorted students: " + e.getMessage());
+            throw new IllegalStateException("Error getting sorted students: " + e.getMessage(), e);
         }
         return list;
     }
@@ -166,7 +166,7 @@ public class StudentManager implements Searchable<Student> {
                 map.put(s.getId(), s);
             }
         } catch (SQLException e) {
-            System.err.println("Error getting student map: " + e.getMessage());
+            throw new IllegalStateException("Error getting student map: " + e.getMessage(), e);
         }
         return map;
     }
@@ -178,7 +178,7 @@ public class StudentManager implements Searchable<Student> {
             pstmt.setString(1, studentId);
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) return rs.getInt(1);
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) { throw new IllegalStateException("Error getting assignment count: " + e.getMessage(), e); }
         return 0;
     }
 
@@ -191,7 +191,7 @@ public class StudentManager implements Searchable<Student> {
             pstmt.setString(2, studentId);
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) return rs.getInt(1);
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) { throw new IllegalStateException("Error getting pending assignment count: " + e.getMessage(), e); }
         return 0;
     }
 

@@ -20,6 +20,8 @@ public class MainFrame extends JFrame {
     private JPanel sidebar;
     private JPanel contentArea;
     private CardLayout cardLayout;
+    private final java.util.List<Runnable> uiUnsubHandles = new java.util.ArrayList<>();
+    private com.university.sync.DBPoller dbPoller;
 
     public MainFrame() {
         User user = SessionManager.getCurrentUser();
@@ -50,10 +52,18 @@ public class MainFrame extends JFrame {
 
         setupModules(user.getRole());
         ThemeManager.refreshComponentTree(this);
+
+        // Start DB poller for cross-process synchronization (3 second interval)
+        try {
+            dbPoller = new com.university.sync.DBPoller(3);
+            dbPoller.start();
+        } catch (Exception e) {
+            System.err.println("Failed to start DBPoller: " + e.getMessage());
+        }
     }
 
     private JPanel createHeader(User user) {
-        JPanel header = new JPanel(new MigLayout("ins 0 35 0 35, fillx, aligny center", "[grow]push[]25[]", "[]"));
+        JPanel header = new JPanel(new MigLayout("ins 0 35 0 35, fillx, aligny center", "[grow]push[]12[]25[]", "[]"));
         ThemeManager.styleHeader(header);
 
         JTextField search = new JTextField("Search resources...");
@@ -67,13 +77,139 @@ public class MainFrame extends JFrame {
         themeBtn.addActionListener(e -> ThemeManager.toggleTheme());
         header.add(themeBtn);
 
+        // Notification badge
+        JLabel notifBadge = new JLabel();
+        notifBadge.setFont(new Font("Inter", Font.BOLD, 13));
+        notifBadge.setOpaque(true);
+        notifBadge.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+        header.add(notifBadge);
+
         JLabel userProfile = new JLabel(user.getUsername());
         userProfile.setFont(new Font("Inter", Font.BOLD, 15));
         userProfile.setIcon(FontIcon.of(MaterialDesignA.ACCOUNT_CIRCLE, 35, ThemeManager.ACCENT_BLUE));
         userProfile.setIconTextGap(12);
         header.add(userProfile);
 
+        // initialize badge value and subscribe to UI events
+        refreshHeaderNotifications(notifBadge);
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_PUBLISHED", payload -> refreshHeaderNotifications(notifBadge)));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("ASSIGNMENT_GRADED", payload -> refreshHeaderNotifications(notifBadge)));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("NOTIFICATION_CREATED", payload -> refreshHeaderNotifications(notifBadge)));
+        uiUnsubHandles.add(com.university.erp.gui.UIEventBus.subscribeWithHandle("SUBMISSION_CREATED", payload -> refreshHeaderNotifications(notifBadge)));
+
+        // show popup on click
+        notifBadge.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        notifBadge.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                showNotificationsPopup(notifBadge);
+            }
+        });
+
         return header;
+    }
+
+    // Minimal HTML-escape to keep popup safe
+    private static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\n", "<br/>");
+    }
+
+    @Override
+    public void dispose() {
+        // unsubscribe all UI listeners
+       for (Runnable r : uiUnsubHandles) {
+           try { r.run(); } catch (Exception ignored) {}
+       }
+       uiUnsubHandles.clear();
+       // stop DB poller
+       try { if (dbPoller != null) dbPoller.stop(); } catch (Exception ignored) {}
+       super.dispose();
+    }
+
+    private void showNotificationsPopup(JLabel notifBadge) {
+        com.university.erp.security.User user = SessionManager.getCurrentUser();
+        if (user == null) return;
+        JPopupMenu popup = new JPopupMenu();
+        try {
+            com.university.lms.AssignmentManager am = new com.university.lms.AssignmentManager();
+            if (user.getRole() == com.university.erp.security.UserRole.STUDENT) {
+                String studentId = user.getRefId() != null ? user.getRefId() : user.getUsername();
+                java.util.List<com.university.models.AssignmentNotification> notes = am.getUnreadAssignmentNotifications(studentId);
+                if (notes.isEmpty()) {
+                    JMenuItem empty = new JMenuItem("No unread notifications");
+                    empty.setEnabled(false);
+                    popup.add(empty);
+                } else {
+                    for (com.university.models.AssignmentNotification n : notes) {
+                        String html = "<html><b>" + escapeHtml(n.getTitle()) + "</b><br/><small>" + escapeHtml(n.getMessage()) + "</small></html>";
+                        JMenuItem item = new JMenuItem(html);
+                        item.addActionListener(ae -> {
+                            try {
+                                am.markAssignmentNotificationRead(studentId, n.getAssignmentId());
+                                refreshHeaderNotifications(notifBadge);
+                                // open LMS view
+                                cardLayout.show(contentArea, "LMS");
+                            } catch (Exception ex) {
+                                JOptionPane.showMessageDialog(this, "Notification Error: " + ex.getMessage());
+                            }
+                        });
+                        popup.add(item);
+                    }
+                }
+            } else if (user.getRole() == com.university.erp.security.UserRole.FACULTY) {
+                JMenuItem open = new JMenuItem("Open Grading Queue");
+                open.addActionListener(ae -> cardLayout.show(contentArea, "FACULTY_LMS"));
+                popup.add(open);
+                JMenuItem refresh = new JMenuItem("Refresh metrics");
+                refresh.addActionListener(ae -> UIEventBus.publish("ASSIGNMENT_PUBLISHED", null));
+                popup.add(refresh);
+            } else {
+                JMenuItem open = new JMenuItem("Open Admin Dashboard");
+                open.addActionListener(ae -> cardLayout.show(contentArea, "DASHBOARD"));
+                popup.add(open);
+            }
+        } catch (Exception e) {
+            JMenuItem err = new JMenuItem("Error loading notifications");
+            err.setEnabled(false);
+            popup.add(err);
+        }
+        popup.show(notifBadge, 0, notifBadge.getHeight());
+    }
+
+    private void refreshHeaderNotifications(JLabel notifBadge) {
+        SwingUtilities.invokeLater(() -> {
+            com.university.erp.security.User user = SessionManager.getCurrentUser();
+            if (user == null) {
+                notifBadge.setVisible(false);
+                return;
+            }
+            try {
+                com.university.lms.AssignmentManager am = new com.university.lms.AssignmentManager();
+                int count = 0;
+                switch (user.getRole()) {
+                    case STUDENT -> count = am.getUnreadAssignmentNotificationCount(user.getRefId() != null ? user.getRefId() : user.getUsername());
+                    case FACULTY -> count = am.getFacultyAssignmentMetrics(user.getRefId() != null ? user.getRefId() : user.getUsername(), false).getPendingReviews();
+                    case ADMIN -> count = com.university.erp.analytics.ExecutiveAnalytics.getCount("submissions");
+                    default -> count = 0;
+                }
+                if (count > 0) {
+                    notifBadge.setText("Notifications: " + count);
+                    notifBadge.setBackground(new Color(255, 245, 230));
+                    notifBadge.setForeground(ThemeManager.WARNING_ORANGE);
+                    notifBadge.setVisible(true);
+                } else {
+                    notifBadge.setText("No new notifications");
+                    notifBadge.setBackground(ThemeManager.surfaceAlt());
+                    notifBadge.setForeground(ThemeManager.textSecondary());
+                    notifBadge.setVisible(true);
+                }
+            } catch (Exception e) {
+                notifBadge.setText("No new notifications");
+                notifBadge.setBackground(ThemeManager.surfaceAlt());
+                notifBadge.setForeground(ThemeManager.textSecondary());
+            }
+        });
     }
 
     private JPanel createSidebar(User user) {
